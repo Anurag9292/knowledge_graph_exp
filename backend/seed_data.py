@@ -6,6 +6,9 @@ import uuid
 
 sys.path.insert(0, ".")
 
+import os
+os.makedirs("db", exist_ok=True)
+
 from app.models.database import async_session, engine, Base
 from app.models.agent_type import AgentType
 
