@@ -1,12 +1,14 @@
 """Experiment and Run management API endpoints."""
 
 import asyncio
+import logging
 import time
+import traceback
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +21,8 @@ from app.models.execution import NodeExecution
 from app.models.experiment import ExperimentRun, ExperimentSession
 from app.models.graph import GraphDefinition
 from app.parsers.base import ParsedDocument
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/experiments", tags=["experiments"])
 
@@ -183,9 +187,13 @@ async def _execute_run_background(
     experiment_memory: dict[str, Any] | None,
 ) -> None:
     """Background task that executes a graph run and persists results."""
+    logger.info(f"[Run {run_id}] Starting background execution...")
+    logger.info(f"[Run {run_id}] Graph: {len(graph_json.get('nodes', []))} nodes, {len(graph_json.get('edges', []))} edges")
     engine: ExecutionEngine | None = None
     try:
         compiled = compile_graph(graph_json)
+        logger.info(f"[Run {run_id}] Graph compiled. Execution order: {compiled.execution_order}")
+
         engine = ExecutionEngine(compiled)
         engine.run_id = run_id
         engine.set_document(document_data)
@@ -199,13 +207,14 @@ async def _execute_run_background(
                 run.status = "running"
                 run.started_at = datetime.now(timezone.utc)
                 await db.commit()
+        logger.info(f"[Run {run_id}] Status set to 'running'")
 
         # Execute and collect events
         async for event in engine.execute_all():
-            # Stream events are also consumed by WebSocket clients (see ws.py)
-            pass
+            logger.info(f"[Run {run_id}] Event: {event.event_type} node={event.node_id}")
 
         # Persist results
+        logger.info(f"[Run {run_id}] Execution complete. Persisting {len(engine.node_results)} node results...")
         async with async_session() as db:
             run = await db.get(ExperimentRun, run_id)
             if run:
@@ -241,16 +250,22 @@ async def _execute_run_background(
                     db.add(node_exec)
 
                 await db.commit()
+        logger.info(f"[Run {run_id}] \u2713 Run completed successfully!")
 
     except Exception as exc:
+        logger.error(f"[Run {run_id}] \u2717 FAILED: {exc}")
+        logger.error(traceback.format_exc())
         # Mark run as failed
-        async with async_session() as db:
-            run = await db.get(ExperimentRun, run_id)
-            if run:
-                run.status = "failed"
-                run.error_message = str(exc)
-                run.completed_at = datetime.now(timezone.utc)
-                await db.commit()
+        try:
+            async with async_session() as db:
+                run = await db.get(ExperimentRun, run_id)
+                if run:
+                    run.status = "failed"
+                    run.error_message = str(exc)
+                    run.completed_at = datetime.now(timezone.utc)
+                    await db.commit()
+        except Exception as db_exc:
+            logger.error(f"[Run {run_id}] Failed to update DB with error status: {db_exc}")
     finally:
         _active_engines.pop(run_id, None)
 
@@ -440,7 +455,6 @@ async def delete_experiment(
 )
 async def create_run(
     session_id: str,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ) -> RunCreateResponse:
     """Start a new run for an experiment (triggers execution in background)."""
@@ -500,13 +514,19 @@ async def create_run(
     await db.refresh(run)
     run_id = run.id
 
-    # Launch background execution
-    background_tasks.add_task(
-        _execute_run_background,
-        run_id=run_id,
-        graph_json=graph_snapshot,
-        document_data=document_data,
-        experiment_memory=session.experiment_memory_json,
+    # Commit the run record NOW so the background task can find it
+    await db.commit()
+
+    logger.info(f"[Run {run_id}] Created run record, launching background execution...")
+
+    # Launch background execution using asyncio.create_task
+    asyncio.create_task(
+        _execute_run_background(
+            run_id=run_id,
+            graph_json=graph_snapshot,
+            document_data=document_data,
+            experiment_memory=session.experiment_memory_json,
+        )
     )
 
     return RunCreateResponse(run_id=run_id, status="pending")
