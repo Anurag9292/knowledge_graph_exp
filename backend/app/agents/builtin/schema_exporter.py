@@ -70,10 +70,23 @@ class SchemaExporterAgent(BaseAgent):
         if "knowledge_graph" in shared_state:
             kg_val = shared_state["knowledge_graph"]
             kg_keys = list(kg_val.keys()) if isinstance(kg_val, dict) else type(kg_val).__name__
-            self.log(f"knowledge_graph contents: keys={kg_keys}")
+            # Also log the actual node count within graph_data
+            kg_gd = kg_val.get("graph_data", {}) if isinstance(kg_val, dict) else {}
+            kg_node_count = len(kg_gd.get("nodes", [])) if isinstance(kg_gd, dict) else 0
+            kg_flat_nodes = len(kg_val.get("nodes", [])) if isinstance(kg_val, dict) else 0
+            self.log(f"knowledge_graph contents: keys={kg_keys}, graph_data.nodes={kg_node_count}, flat_nodes={kg_flat_nodes}")
         if "agent_outputs" in shared_state:
-            ao_keys = list(shared_state["agent_outputs"].keys()) if isinstance(shared_state.get("agent_outputs"), dict) else "not-a-dict"
-            self.log(f"agent_outputs node keys: {ao_keys}")
+            ao = shared_state.get("agent_outputs", {})
+            ao_keys = list(ao.keys()) if isinstance(ao, dict) else "not-a-dict"
+            # Check what's inside node_kg specifically
+            node_kg_output = ao.get("node_kg", {}) if isinstance(ao, dict) else {}
+            node_kg_gd = node_kg_output.get("graph_data", {}) if isinstance(node_kg_output, dict) else {}
+            node_kg_nodes = len(node_kg_gd.get("nodes", [])) if isinstance(node_kg_gd, dict) else 0
+            self.log(f"agent_outputs node keys: {ao_keys}, node_kg.graph_data.nodes={node_kg_nodes}")
+        # Log accumulated entities/relationships counts
+        acc_entities = shared_state.get("entities", [])
+        acc_rels = shared_state.get("relationships", [])
+        self.log(f"Accumulated state: entities={len(acc_entities) if isinstance(acc_entities, list) else 'N/A'}, relationships={len(acc_rels) if isinstance(acc_rels, list) else 'N/A'}")
 
         # ─── KG data: try multiple sources (edge data, shared state, agent_outputs)
 
@@ -129,6 +142,42 @@ class SchemaExporterAgent(BaseAgent):
                         stats = node_output.get("stats", stats)
                         self.log(f"KG data loaded from agent_outputs['{node_key}'] ({len(nodes)} nodes)")
                         break
+
+        # Source 5: Reconstruct from accumulated entities + relationships in shared state
+        # These are populated by ontology_extractor and relationship_extractor via extend_list reducers
+        if not nodes:
+            accumulated_entities = shared_state.get("entities", [])
+            accumulated_relationships = shared_state.get("relationships", [])
+            if isinstance(accumulated_entities, list) and accumulated_entities:
+                # Convert entities to node format
+                nodes = []
+                for entity in accumulated_entities:
+                    if isinstance(entity, dict) and entity.get("name"):
+                        node_id = entity["name"].lower().replace(" ", "_")
+                        nodes.append({
+                            "id": node_id,
+                            "label": entity["name"],
+                            "type": entity.get("type", "unknown"),
+                            "properties": {
+                                k: v for k, v in entity.items()
+                                if k not in ("name", "type") and v
+                            },
+                        })
+                # Convert relationships to edge format
+                if isinstance(accumulated_relationships, list) and accumulated_relationships:
+                    edges = []
+                    for rel in accumulated_relationships:
+                        if isinstance(rel, dict) and rel.get("source") and rel.get("target"):
+                            edges.append({
+                                "source": rel["source"].lower().replace(" ", "_"),
+                                "target": rel["target"].lower().replace(" ", "_"),
+                                "type": rel.get("type", "related_to"),
+                                "properties": {
+                                    "description": rel.get("description", ""),
+                                    "confidence": rel.get("confidence", 0.5),
+                                },
+                            })
+                self.log(f"Source 5 (accumulated state): reconstructed {len(nodes)} nodes, {len(edges)} edges from entities/relationships")
 
         self.log(
             f"Inputs collected: {len(nodes)} nodes, {len(edges)} edges, "
