@@ -38,14 +38,17 @@ You MUST output valid JSON with the following structure:
   ]
 }
 
-Guidelines:
+CRITICAL RULES:
+- Every entity MUST become a node
+- Every relationship MUST become an edge — do NOT return empty edges
 - Node IDs should be lowercase, underscore-separated versions of entity names
-- Every entity must become a node
-- Every relationship must become an edge
-- Preserve all metadata as properties
-- Ensure all edge source/target references match existing node IDs
+- Edge source/target MUST use the node IDs (not labels)
+- For each relationship, create an edge where source = source entity's node ID, target = target entity's node ID
+- Preserve confidence scores and descriptions as edge properties
 - Merge duplicate entities into single nodes
-- If an existing graph is provided, add new nodes/edges without duplicating existing ones"""
+- If an existing graph is provided, add new nodes/edges without duplicating existing ones
+
+IMPORTANT: If you receive N relationships, you must output N edges. Never return "edges": []."""
 
     default_model: str = "gpt-4o"
     default_temperature: float = 0.1
@@ -97,6 +100,31 @@ Guidelines:
             edges = result.get("edges", [])
 
             self.log(f"LLM produced {len(nodes)} nodes and {len(edges)} edges")
+
+            # If LLM returned nodes but no edges, convert relationships directly
+            if nodes and not edges and relationships:
+                self.log("LLM returned 0 edges — converting relationships to edges directly")
+                node_ids = {n.get("id", "").lower() for n in nodes}
+                # Also index by label for matching
+                label_to_id = {n.get("label", "").lower(): n.get("id", "") for n in nodes}
+
+                for rel in relationships:
+                    source_name = rel.get("source", "")
+                    target_name = rel.get("target", "")
+                    # Try to match to node IDs
+                    source_id = label_to_id.get(source_name.lower(), source_name.lower().replace(" ", "_"))
+                    target_id = label_to_id.get(target_name.lower(), target_name.lower().replace(" ", "_"))
+
+                    edges.append({
+                        "source": source_id,
+                        "target": target_id,
+                        "type": rel.get("type", "related_to"),
+                        "properties": {
+                            "description": rel.get("description", ""),
+                            "confidence": rel.get("confidence", 0.5),
+                        },
+                    })
+                self.log(f"Created {len(edges)} edges from relationships")
 
             # Build and validate with NetworkX
             graph_data = self._build_networkx_graph(nodes, edges, existing_graph)
