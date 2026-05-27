@@ -3,7 +3,8 @@
 import { useEffect } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useExecutionStore } from '@/stores/executionStore';
-import { agentsApi } from '@/lib/api';
+import { useGraphStore } from '@/stores/graphStore';
+import { agentsApi, graphsApi } from '@/lib/api';
 import { AgentPalette } from '@/components/graph-editor/AgentPalette';
 import { GraphCanvas } from '@/components/graph-editor/GraphCanvas';
 import { Toolbar } from '@/components/graph-editor/Toolbar';
@@ -16,6 +17,7 @@ import { KnowledgeGraph } from '@/types';
 export default function Home() {
   const { activeTab, setAgentTypes, agentTypesLoaded, kgViewerOpen, toggleKgViewer } = useAppStore();
   const { sharedState, nodeExecutions } = useExecutionStore();
+  const { graphId, loadGraph, setGraphMeta } = useGraphStore();
 
   // Load agent types on mount
   useEffect(() => {
@@ -23,6 +25,19 @@ export default function Home() {
       agentsApi.listTypes().then(setAgentTypes).catch(console.error);
     }
   }, [agentTypesLoaded, setAgentTypes]);
+
+  // Auto-load the default graph if canvas is empty
+  useEffect(() => {
+    if (!graphId) {
+      graphsApi.list().then((graphs) => {
+        if (graphs.length > 0) {
+          const defaultGraph = graphs[0];
+          loadGraph(defaultGraph.nodes_json || [], defaultGraph.edges_json || []);
+          setGraphMeta(defaultGraph.id, defaultGraph.name, defaultGraph.description || '');
+        }
+      }).catch(console.error);
+    }
+  }, [graphId, loadGraph, setGraphMeta]);
 
   // Extract KG data from execution results
   const kgData: KnowledgeGraph = (() => {

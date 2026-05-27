@@ -74,7 +74,10 @@ class AgentTypeSummary(BaseModel):
     name: str
     description: Optional[str]
     category: Optional[str]
+    default_system_prompt: Optional[str] = None
     default_model: str
+    default_temperature: float = 0.2
+    default_max_tokens: int = 4096
     vision_enabled: bool
     is_builtin: bool
 
@@ -122,7 +125,10 @@ async def list_agent_types(
                     name=agent_info["name"],
                     description=agent_info.get("description"),
                     category=agent_info.get("category"),
+                    default_system_prompt=agent_info.get("default_system_prompt"),
                     default_model=agent_info.get("default_model", "gpt-4o"),
+                    default_temperature=agent_info.get("default_temperature", 0.2),
+                    default_max_tokens=agent_info.get("default_max_tokens", 4096),
                     vision_enabled=agent_info.get("vision_enabled", False),
                     is_builtin=True,
                 )
