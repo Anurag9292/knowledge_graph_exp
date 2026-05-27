@@ -68,6 +68,7 @@ export interface NodeConfig {
   max_tokens?: number;
   memory_config?: Partial<MemoryConfig>;
   tools?: ToolDefinition[];
+  schema?: Record<string, any>;  // For domain_config nodes — holds the domain schema
 }
 
 export interface GraphEdge {

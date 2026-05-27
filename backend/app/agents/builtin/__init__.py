@@ -7,6 +7,8 @@ from app.agents.builtin.streaming_ingestion import StreamingIngestionAgent
 from app.agents.builtin.entity_resolver import EntityResolverAgent
 from app.agents.builtin.relationship_extractor import RelationshipExtractorAgent
 from app.agents.builtin.summarizer import SummarizerAgent
+from app.agents.builtin.domain_config import DomainConfigAgent
+from app.agents.builtin.schema_architect import SchemaArchitectAgent
 
 __all__ = [
     "StructureInferrerAgent",
@@ -17,4 +19,6 @@ __all__ = [
     "EntityResolverAgent",
     "RelationshipExtractorAgent",
     "SummarizerAgent",
+    "DomainConfigAgent",
+    "SchemaArchitectAgent",
 ]

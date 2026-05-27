@@ -22,6 +22,7 @@ export function getAgentColor(category: string): string {
     extraction: '#10b981',   // green
     transformation: '#f59e0b', // amber
     ingestion: '#8b5cf6',    // purple
+    configuration: '#475569', // slate (for domain_config, schema_architect)
     custom: '#ec4899',       // pink
   };
   return colors[category] || '#6b7280'; // gray default
@@ -37,6 +38,8 @@ export function getAgentIcon(agentType: string): string {
     entity_resolver: '🔗',
     relationship_extractor: '🔀',
     summarizer: '📝',
+    domain_config: '📋',
+    schema_architect: '🏗',
   };
   return icons[agentType] || '🤖';
 }

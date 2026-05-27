@@ -22,11 +22,13 @@ function AgentNodeComponent({ id, data, selected }: NodeProps<AgentNodeData>) {
   const icon = getAgentIcon(data.agentType);
   const statusColor = getStatusColor(status);
 
+  const isDomainConfig = data.agentType === 'domain_config';
+
   return (
     <div
       className={`relative rounded-lg border-2 bg-white shadow-md transition-all duration-200 min-w-[180px] ${
         selected ? 'ring-2 ring-blue-400' : ''
-      } ${status === 'running' ? 'animate-pulse' : ''}`}
+      } ${status === 'running' ? 'animate-pulse' : ''} ${isDomainConfig ? 'border-dashed' : ''}`}
       style={{ borderColor: status !== 'idle' ? statusColor : color }}
       onClick={() => selectNode(id)}
     >

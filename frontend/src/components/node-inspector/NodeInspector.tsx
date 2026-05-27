@@ -1,14 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Brain, ArrowRightLeft, MemoryStick, ScrollText, Wrench, Plus, Trash2 } from 'lucide-react';
+import { X, Brain, ArrowRightLeft, MemoryStick, ScrollText, Wrench, Plus, Trash2, FileText } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import { useExecutionStore } from '@/stores/executionStore';
 import { useGraphStore } from '@/stores/graphStore';
 import { getAgentIcon, formatDuration, formatTokens } from '@/lib/utils';
 import { ToolDefinition } from '@/types';
+import yaml from 'js-yaml';
 
-type Tab = 'config' | 'input' | 'output' | 'memory' | 'logs' | 'tools';
+type Tab = 'config' | 'schema' | 'input' | 'output' | 'memory' | 'logs' | 'tools';
 
 export function NodeInspector() {
   const { selectedNodeId, inspectorOpen, selectNode, agentTypes } = useAppStore();
@@ -25,8 +26,13 @@ export function NodeInspector() {
   const agentType = agentTypes.find((a) => a.name === node.data.agentType);
   const config = node.data.config || {};
 
+  const isDomainConfig = node.data.agentType === 'domain_config';
+  const isSchemaArchitect = node.data.agentType === 'schema_architect';
+  const hasSchemaTab = isDomainConfig || isSchemaArchitect;
+
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'config', label: 'Config', icon: <Brain className="w-3.5 h-3.5" /> },
+    ...(hasSchemaTab ? [{ id: 'schema' as Tab, label: isDomainConfig ? 'Schema' : 'Schema Diff', icon: <FileText className="w-3.5 h-3.5" /> }] : []),
     { id: 'input', label: 'Input', icon: <ArrowRightLeft className="w-3.5 h-3.5" /> },
     { id: 'output', label: 'Output', icon: <ArrowRightLeft className="w-3.5 h-3.5" /> },
     { id: 'memory', label: 'Memory', icon: <MemoryStick className="w-3.5 h-3.5" /> },
@@ -133,6 +139,14 @@ export function NodeInspector() {
               />
             </div>
           </div>
+        )}
+
+        {activeTab === 'schema' && isDomainConfig && (
+          <SchemaEditor nodeId={selectedNodeId} config={config} />
+        )}
+
+        {activeTab === 'schema' && isSchemaArchitect && (
+          <SchemaDiffView execution={execution} />
         )}
 
         {activeTab === 'input' && (
@@ -405,6 +419,258 @@ function ToolsTab({ nodeId, config, execution }: { nodeId: string; config: any; 
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+
+// ─── Schema Editor (for domain_config nodes) ────────────────────────────────
+
+const DEFAULT_SCHEMA_YAML = `# Domain Schema Configuration
+# Edit this YAML to define your domain's entity and relationship types.
+# This schema guides all downstream extraction agents.
+
+entity_types:
+  Person:
+    description: A human individual
+    properties: [name, role, organization]
+    aliases: {}
+  Organization:
+    description: A company, institution, or government body
+    properties: [name, org_type, country]
+    aliases: {}
+  Country:
+    description: A sovereign nation or territory
+    properties: [name, iso_code, region]
+    aliases: {}
+  Product:
+    description: A product, commodity, or service
+    properties: [name, category, code]
+    aliases: {}
+  Concept:
+    description: An abstract idea, policy, or domain concept
+    properties: [name, domain]
+    aliases: {}
+
+relationship_types:
+  PRODUCES:
+    description: Entity produces/manufactures a product
+    from_types: [Country, Organization]
+    to_types: [Product]
+    properties: [value, unit, year]
+  EXPORTS_TO:
+    description: Entity exports to another entity
+    from_types: [Country]
+    to_types: [Country]
+    properties: [value, unit, year, product]
+  PART_OF:
+    description: Entity is part of another entity
+    from_types: [Person, Organization, Product]
+    to_types: [Organization, Country, Concept]
+    properties: []
+  IMPLEMENTS:
+    description: Entity implements a policy/scheme
+    from_types: [Country, Organization]
+    to_types: [Concept]
+    properties: [year, budget]
+  RELATED_TO:
+    description: General relationship between entities
+    from_types: ["*"]
+    to_types: ["*"]
+    properties: []
+
+aliases: {}
+`;
+
+function SchemaEditor({ nodeId, config }: { nodeId: string; config: any }) {
+  const { updateNodeConfig } = useGraphStore();
+  const [schemaYaml, setSchemaYaml] = useState(() => {
+    if (config.schema) {
+      try {
+        return yaml.dump(config.schema, { indent: 2, lineWidth: 120 });
+      } catch {
+        return JSON.stringify(config.schema, null, 2);
+      }
+    }
+    return DEFAULT_SCHEMA_YAML;
+  });
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = () => {
+    try {
+      const parsed = yaml.load(schemaYaml) as any;
+      if (!parsed || typeof parsed !== 'object') {
+        setError('Invalid YAML: must be an object');
+        return;
+      }
+      updateNodeConfig(nodeId, { schema: parsed });
+      setError(null);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e: any) {
+      setError(`YAML Error: ${e.message}`);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <label className="text-xs font-medium text-gray-600">Domain Schema (YAML)</label>
+        <div className="flex items-center gap-2">
+          {saved && <span className="text-xs text-green-600">✓ Saved</span>}
+          <button
+            onClick={handleSave}
+            className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition"
+          >
+            Save Schema
+          </button>
+        </div>
+      </div>
+      <p className="text-xs text-gray-400">
+        Define entity types, relationship types, and aliases for your domain.
+        This schema guides all downstream extraction agents.
+      </p>
+      <textarea
+        value={schemaYaml}
+        onChange={(e) => { setSchemaYaml(e.target.value); setError(null); }}
+        className="w-full h-[400px] text-xs font-mono border border-gray-300 rounded-md p-3 focus:outline-none focus:ring-1 focus:ring-blue-400 resize-y bg-gray-50"
+        spellCheck={false}
+      />
+      {error && (
+        <div className="p-2 bg-red-50 border border-red-200 rounded text-xs text-red-600">
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ─── Schema Diff View (for schema_architect nodes) ──────────────────────────
+
+function SchemaDiffView({ execution }: { execution: any }) {
+  if (!execution?.output_data_json) {
+    return (
+      <p className="text-xs text-gray-400 italic">
+        Run the pipeline to see schema analysis results.
+      </p>
+    );
+  }
+
+  const output = execution.output_data_json;
+  const extensions = output.extensions || {};
+  const newEntityTypes = extensions.new_entity_types || [];
+  const newRelTypes = extensions.new_relationship_types || [];
+  const newAliases = extensions.new_aliases || {};
+  const observations = extensions.observations || '';
+  const schemaBefore = output.schema_before || {};
+  const schemaAfter = output.schema_after || {};
+
+  const baseEntityCount = Object.keys(schemaBefore.entity_types || {}).length;
+  const baseRelCount = Object.keys(schemaBefore.relationship_types || {}).length;
+
+  return (
+    <div className="space-y-4">
+      {/* Summary */}
+      <div className="p-3 bg-gray-50 rounded-md border border-gray-200">
+        <h4 className="text-xs font-semibold text-gray-700 mb-2">Schema Analysis Summary</h4>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="p-2 bg-white rounded border border-gray-100">
+            <span className="text-gray-500">Base Schema</span>
+            <p className="font-medium text-gray-700">{baseEntityCount} entity types, {baseRelCount} rel types</p>
+          </div>
+          <div className="p-2 bg-white rounded border border-gray-100">
+            <span className="text-gray-500">Extensions Found</span>
+            <p className="font-medium text-green-700">+{newEntityTypes.length} entities, +{newRelTypes.length} rels</p>
+          </div>
+        </div>
+      </div>
+
+      {/* New Entity Types */}
+      {newEntityTypes.length > 0 && (
+        <div>
+          <h4 className="text-xs font-semibold text-green-700 mb-1 flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-green-500" />
+            New Entity Types ({newEntityTypes.length})
+          </h4>
+          <div className="space-y-1">
+            {newEntityTypes.map((et: any, i: number) => (
+              <div key={i} className="p-2 bg-green-50 border border-green-100 rounded text-xs">
+                <span className="font-semibold text-green-800">{et.name}</span>
+                <span className="text-green-600 ml-2">{et.description}</span>
+                {et.properties?.length > 0 && (
+                  <p className="text-green-500 mt-0.5">Properties: {et.properties.join(', ')}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* New Relationship Types */}
+      {newRelTypes.length > 0 && (
+        <div>
+          <h4 className="text-xs font-semibold text-green-700 mb-1 flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-green-500" />
+            New Relationship Types ({newRelTypes.length})
+          </h4>
+          <div className="space-y-1">
+            {newRelTypes.map((rt: any, i: number) => (
+              <div key={i} className="p-2 bg-green-50 border border-green-100 rounded text-xs">
+                <span className="font-semibold text-green-800">{rt.name}</span>
+                <span className="text-green-600 ml-2">{rt.description}</span>
+                {rt.from_types && rt.to_types && (
+                  <p className="text-green-500 mt-0.5">
+                    {rt.from_types.join('|')} → {rt.to_types.join('|')}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* New Aliases */}
+      {Object.keys(newAliases).length > 0 && (
+        <div>
+          <h4 className="text-xs font-semibold text-blue-700 mb-1">New Aliases</h4>
+          <div className="p-2 bg-blue-50 border border-blue-100 rounded text-xs space-y-0.5">
+            {Object.entries(newAliases).map(([alias, canonical]) => (
+              <div key={alias} className="text-blue-700">
+                "{alias}" → <span className="font-medium">{canonical as string}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Observations */}
+      {observations && (
+        <div>
+          <h4 className="text-xs font-semibold text-gray-600 mb-1">Observations</h4>
+          <p className="text-xs text-gray-600 bg-gray-50 p-2 rounded border border-gray-100 italic">
+            {observations}
+          </p>
+        </div>
+      )}
+
+      {/* No extensions found */}
+      {newEntityTypes.length === 0 && newRelTypes.length === 0 && Object.keys(newAliases).length === 0 && (
+        <div className="p-3 bg-gray-50 rounded text-xs text-gray-500 text-center">
+          No schema extensions needed — the base schema covers this document well.
+        </div>
+      )}
+
+      {/* Full schema after (collapsible) */}
+      <details className="text-xs">
+        <summary className="text-gray-500 cursor-pointer hover:text-gray-700 font-medium">
+          View merged schema (YAML)
+        </summary>
+        <pre className="mt-2 p-2 bg-gray-50 border border-gray-200 rounded overflow-x-auto text-xs max-h-[300px] overflow-y-auto">
+          {(() => { try { return yaml.dump(schemaAfter, { indent: 2 }); } catch { return JSON.stringify(schemaAfter, null, 2); } })()}
+        </pre>
+      </details>
     </div>
   );
 }
