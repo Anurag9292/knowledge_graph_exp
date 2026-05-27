@@ -87,12 +87,14 @@ class SchemaExporterAgent(BaseAgent):
             nodes = graph_data.get("nodes", [])
             edges = graph_data.get("edges", [])
         stats = agent_input.data.get("stats", {})
+        self.log(f"Source 1 (edge data): graph_data type={type(graph_data).__name__}, nodes={len(nodes)}, edges={len(edges)}")
 
         # Source 2: Top-level nodes/edges in input data
         if not nodes:
             nodes = agent_input.data.get("nodes", [])
-        if not edges:
-            edges = agent_input.data.get("edges", [])
+            edges = agent_input.data.get("edges", edges)
+            if nodes:
+                self.log(f"Source 2 (top-level data keys): nodes={len(nodes)}, edges={len(edges)}")
 
         # Source 3: shared state "knowledge_graph" field (written by kg_builder via shared_state_writes)
         if not nodes:

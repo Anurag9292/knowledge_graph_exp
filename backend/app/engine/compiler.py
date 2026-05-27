@@ -140,23 +140,30 @@ def _build_node_input_from_state(
 
 def _inject_shared_state_fields(state: GraphState, input_data: dict[str, Any]) -> None:
     """
-    Inject important shared state fields into input_data if not already present.
+    Inject important shared state fields into input_data if not already present
+    or if the existing values are empty.
     
-    This acts as a safety net: if the edge-based data flow doesn't deliver
-    key fields (like knowledge_graph from kg_builder), they can still be
-    accessed from the shared state directly.
+    This acts as a safety net: if the edge-based data flow delivers empty/incomplete
+    data (e.g., graph_data with no nodes), the shared state version is used instead.
     """
-    # Inject knowledge_graph if not already in input_data
-    if "graph_data" not in input_data:
+    # Inject knowledge_graph if input_data has no graph_data with actual nodes
+    existing_graph_data = input_data.get("graph_data", {})
+    has_actual_nodes = (
+        isinstance(existing_graph_data, dict)
+        and isinstance(existing_graph_data.get("nodes"), list)
+        and len(existing_graph_data.get("nodes", [])) > 0
+    )
+
+    if not has_actual_nodes:
         kg = state.get("knowledge_graph", {})
         if isinstance(kg, dict):
             # Handle nested structure: {"graph_data": {"nodes": [...], ...}, "stats": {...}}
-            if kg.get("graph_data") and isinstance(kg["graph_data"], dict):
-                input_data["graph_data"] = kg["graph_data"]
-                if "stats" not in input_data:
-                    input_data["stats"] = kg.get("stats", {})
+            kg_graph_data = kg.get("graph_data", {})
+            if isinstance(kg_graph_data, dict) and kg_graph_data.get("nodes"):
+                input_data["graph_data"] = kg_graph_data
+                input_data["stats"] = kg.get("stats", input_data.get("stats", {}))
             # Handle flat structure: {"nodes": [...], "edges": [...]}
-            elif kg.get("nodes") and isinstance(kg["nodes"], list) and len(kg["nodes"]) > 0:
+            elif isinstance(kg.get("nodes"), list) and len(kg.get("nodes", [])) > 0:
                 input_data["graph_data"] = {"nodes": kg["nodes"], "edges": kg.get("edges", [])}
 
     # Inject domain_schema if not already in input_data
