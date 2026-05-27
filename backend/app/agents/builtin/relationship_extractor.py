@@ -87,14 +87,21 @@ IMPORTANT: You must find at least one relationship if two or more entities are p
         # Build messages for the LLM
         full_prompt = self.build_full_prompt(agent_input)
 
-        # Format entities for the prompt
-        entity_list = json.dumps(entities, indent=2)
+        # Format entities for the prompt — only include name and type to keep
+        # the prompt compact. Descriptions are helpful context but make the prompt
+        # too large for 50+ entities, causing the LLM to return empty results.
+        compact_entities = [
+            {"name": e.get("name", ""), "type": e.get("type", "")}
+            for e in entities
+            if e.get("name")
+        ]
+        entity_list = json.dumps(compact_entities, indent=2)
 
         # Include ontology context if available (helps LLM understand expected relationships)
         ontology = agent_input.data.get("ontology", {})
         schema = agent_input.data.get("schema", [])
 
-        user_content = f"Find ALL relationships between these entities:\n\n"
+        user_content = f"Find ALL relationships between these {len(compact_entities)} entities:\n\n"
         user_content += f"Entities:\n{entity_list}\n\n"
 
         if ontology or schema:
@@ -102,7 +109,7 @@ IMPORTANT: You must find at least one relationship if two or more entities are p
             user_content += f"Domain context / ontology:\n{json.dumps(context, indent=2)[:1500]}\n\n"
 
         user_content += f"Source text:\n{text}\n\n"
-        user_content += "Remember: if entities co-occur in the text, they ARE related. Extract all relationships."
+        user_content += "Remember: if entities co-occur in the text, they ARE related. Extract all relationships. You MUST return at least one relationship for each pair of entities that appear together in the same sentence or paragraph."
 
         messages = [
             {"role": "system", "content": full_prompt},
