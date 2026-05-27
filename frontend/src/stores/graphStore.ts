@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { Node, Edge, Connection, addEdge, applyNodeChanges, applyEdgeChanges, NodeChange, EdgeChange } from 'reactflow';
-import { GraphNode, GraphEdge, NodeConfig } from '@/types';
+import { GraphNode, GraphEdge, NodeConfig, EdgeCondition } from '@/types';
 
 interface GraphState {
   // Graph metadata
@@ -21,6 +21,8 @@ interface GraphState {
   removeNode: (nodeId: string) => void;
   updateNodeConfig: (nodeId: string, config: Partial<NodeConfig>) => void;
   updateEdgeMapping: (edgeId: string, mapping: Record<string, string>) => void;
+  updateEdgeType: (edgeId: string, edgeType: 'default' | 'conditional' | 'loop') => void;
+  updateEdgeCondition: (edgeId: string, condition: EdgeCondition | undefined) => void;
   loadGraph: (nodes: GraphNode[], edges: GraphEdge[]) => void;
   clearGraph: () => void;
   getGraphJson: () => { nodes: GraphNode[]; edges: GraphEdge[] };
@@ -44,7 +46,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   onEdgesChange: (changes) => set((state) => ({ edges: applyEdgeChanges(changes, state.edges) })),
 
   onConnect: (connection) => set((state) => ({
-    edges: addEdge({ ...connection, id: generateEdgeId(), type: 'smoothstep', animated: false, data: { mapping: {} } }, state.edges),
+    edges: addEdge({ ...connection, id: generateEdgeId(), type: 'smoothstep', animated: false, data: { mapping: {}, edgeType: 'default', condition: undefined } }, state.edges),
   })),
 
   addNode: (agentType, position, config) => {
@@ -79,6 +81,25 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     ),
   })),
 
+  updateEdgeType: (edgeId, edgeType) => set((state) => ({
+    edges: state.edges.map((e) =>
+      e.id === edgeId
+        ? {
+            ...e,
+            animated: edgeType === 'loop',
+            style: edgeType === 'conditional' ? { strokeDasharray: '5,5', stroke: '#f59e0b' } : edgeType === 'loop' ? { stroke: '#8b5cf6' } : undefined,
+            data: { ...e.data, edgeType },
+          }
+        : e
+    ),
+  })),
+
+  updateEdgeCondition: (edgeId, condition) => set((state) => ({
+    edges: state.edges.map((e) =>
+      e.id === edgeId ? { ...e, data: { ...e.data, condition } } : e
+    ),
+  })),
+
   loadGraph: (graphNodes, graphEdges) => {
     const nodes: Node[] = graphNodes.map((gn) => ({
       id: gn.id,
@@ -91,8 +112,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       source: ge.source_node_id,
       target: ge.target_node_id,
       type: 'smoothstep',
-      animated: false,
-      data: { mapping: ge.data_mapping },
+      animated: ge.edge_type === 'loop',
+      style: ge.edge_type === 'conditional' ? { strokeDasharray: '5,5', stroke: '#f59e0b' } : ge.edge_type === 'loop' ? { stroke: '#8b5cf6' } : undefined,
+      data: { mapping: ge.data_mapping, edgeType: ge.edge_type || 'default', condition: ge.condition },
     }));
     set({ nodes, edges });
   },
@@ -113,6 +135,8 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       source_node_id: e.source,
       target_node_id: e.target,
       data_mapping: e.data?.mapping || {},
+      edge_type: e.data?.edgeType || 'default',
+      condition: e.data?.condition,
     }));
     return { nodes: graphNodes, edges: graphEdges };
   },

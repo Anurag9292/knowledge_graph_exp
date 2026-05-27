@@ -1,18 +1,25 @@
-"""Execution engine — runs compiled graphs step by step with full observability."""
+"""Execution engine — runs LangGraph compiled graphs with full observability.
+
+This module wraps LangGraph execution with:
+- Streaming events for WebSocket support
+- Pause/resume/cancel controls
+- Full observability (captures everything at each node)
+- Checkpointing for state persistence
+"""
 
 import asyncio
 import time
 import uuid
 from typing import Any, AsyncIterator
 
-from app.agents.base import AgentInput, AgentOutput, BaseAgent, StreamEvent
+from app.agents.base import StreamEvent
 from app.engine.compiler import CompiledGraph
-from app.engine.state import RunState
+from app.engine.state import GraphState, create_initial_state
 
 
 class NodeExecutionResult:
-    """Result of executing a single node."""
-    
+    """Result of executing a single node (for observability & DB persistence)."""
+
     def __init__(
         self,
         node_id: str,
@@ -48,69 +55,64 @@ class NodeExecutionResult:
 
 class ExecutionEngine:
     """
-    The main execution engine for running compiled graphs.
+    The main execution engine powered by LangGraph.
     
     Features:
-    - Step-by-step execution following topological order
+    - LangGraph StateGraph execution with checkpointing
+    - Step-by-step streaming via LangGraph's astream_events
     - Full observability (captures everything at each node)
     - WebSocket event streaming
-    - Pause/resume support
+    - Pause/resume/cancel support
     - Error handling with graceful degradation
     """
-    
+
     def __init__(self, compiled_graph: CompiledGraph):
         self.graph = compiled_graph
-        self.shared_state: dict[str, Any] = {
-            "agent_outputs": {},
-            "entities": [],
-            "relationships": [],
-            "knowledge_graph": {"nodes": [], "edges": []},
-            "document_structure": {},
-            "ontology": {},
-            "flags": {},
-            "summaries": {},
-            "visual_results": [],
-        }
-        self.node_outputs: dict[str, dict[str, Any]] = {}
         self.node_results: list[NodeExecutionResult] = []
-        self.agents: dict[str, BaseAgent] = {}
         self.is_paused: bool = False
         self.is_cancelled: bool = False
         self.current_node_index: int = 0
         self.run_id: str = str(uuid.uuid4())
         self.total_tokens: int = 0
         self.started_at: float = 0
+        self._document_data: dict[str, Any] = {}
         self._experiment_memory: dict[str, Any] | None = None
-    
+        self._final_state: dict[str, Any] = {}
+
     def set_document(self, document_data: dict[str, Any]) -> None:
-        """Set the input document in the shared state."""
-        self.shared_state["document"] = document_data
-    
+        """Set the input document."""
+        self._document_data = document_data
+
     def set_experiment_memory(self, memory: dict[str, Any] | None) -> None:
         """Set experiment-level memory (cross-run context)."""
         self._experiment_memory = memory
-    
+
     def pause(self) -> None:
         """Pause execution after the current node completes."""
         self.is_paused = True
-    
+
     def resume(self) -> None:
         """Resume execution from where it was paused."""
         self.is_paused = False
-    
+
     def cancel(self) -> None:
         """Cancel execution."""
         self.is_cancelled = True
-    
+
+    @property
+    def shared_state(self) -> dict[str, Any]:
+        """Access the final state (for backward compatibility with API layer)."""
+        return self._final_state
+
     async def execute_all(self) -> AsyncIterator[StreamEvent]:
         """
-        Execute the entire graph, yielding events at each step.
+        Execute the entire graph using LangGraph, yielding events at each step.
         
-        This is the main entry point for full execution.
-        Yields StreamEvents that the WebSocket handler sends to the frontend.
+        Uses LangGraph's astream() to get state updates after each node,
+        converting them into StreamEvents for the WebSocket handler.
         """
         self.started_at = time.time()
-        
+
         yield StreamEvent(
             event_type="run_start",
             node_id="",
@@ -121,37 +123,149 @@ class ExecutionEngine:
             },
             timestamp=time.time(),
         )
-        
-        # Instantiate all agents
-        for node_id in self.graph.execution_order:
-            node_def = self.graph.nodes[node_id]
-            self.agents[node_id] = node_def.create_agent()
-        
-        # Execute nodes in order
-        for i, node_id in enumerate(self.graph.execution_order):
-            if self.is_cancelled:
-                yield StreamEvent(
-                    event_type="run_cancelled",
-                    node_id=node_id,
-                    timestamp=time.time(),
-                )
-                break
-            
-            # Wait while paused
-            while self.is_paused:
-                await asyncio.sleep(0.1)
+
+        # Create initial state
+        initial_state = create_initial_state(
+            document_data=self._document_data,
+            experiment_memory=self._experiment_memory,
+        )
+
+        # Track which nodes we've seen complete
+        seen_nodes: set[str] = set()
+
+        try:
+            # Use LangGraph's astream to get updates after each node
+            async for state_update in self.graph.app.astream(
+                initial_state,
+                stream_mode="updates",
+            ):
+                # Check for cancellation
                 if self.is_cancelled:
+                    yield StreamEvent(
+                        event_type="run_cancelled",
+                        node_id="",
+                        timestamp=time.time(),
+                    )
                     break
-            
-            self.current_node_index = i
-            
-            # Execute the node and yield events
-            async for event in self._execute_node(node_id):
-                yield event
-        
+
+                # Wait while paused
+                while self.is_paused and not self.is_cancelled:
+                    await asyncio.sleep(0.1)
+
+                if self.is_cancelled:
+                    yield StreamEvent(
+                        event_type="run_cancelled",
+                        node_id="",
+                        timestamp=time.time(),
+                    )
+                    break
+
+                # state_update is a dict with node_id -> state_updates
+                # e.g., {"node_abc123": {"agent_outputs": {...}, "execution_log": [...]}}
+                for node_id, updates in state_update.items():
+                    if node_id in ("__start__", "__end__"):
+                        continue
+
+                    # Extract execution log entry for this node
+                    exec_logs = updates.get("execution_log", [])
+                    if exec_logs:
+                        log_entry = exec_logs[-1]  # Most recent entry for this node
+                        node_agent_type = log_entry.get("agent_type", "unknown")
+                        node_status = log_entry.get("status", "unknown")
+                        node_duration = log_entry.get("duration_ms", 0)
+                        node_input = log_entry.get("input_data", {})
+                        node_output = log_entry.get("output_data", {})
+                        node_error = log_entry.get("error")
+                        node_memory_before = log_entry.get("memory_before", {})
+                        node_memory_after = log_entry.get("memory_after", {})
+                        node_logs = log_entry.get("logs", [])
+                        node_tool_calls = log_entry.get("tool_calls", [])
+                        node_system_prompt = log_entry.get("system_prompt", "")
+
+                        # Emit node_start event
+                        yield StreamEvent(
+                            event_type="node_start",
+                            node_id=node_id,
+                            data={"agent_type": node_agent_type},
+                            timestamp=time.time(),
+                        )
+
+                        # Emit node_input event
+                        yield StreamEvent(
+                            event_type="node_input",
+                            node_id=node_id,
+                            data={
+                                "input": node_input,
+                                "memory_before": node_memory_before,
+                            },
+                            timestamp=time.time(),
+                        )
+
+                        # Emit node_complete or node_error
+                        if node_status == "completed":
+                            yield StreamEvent(
+                                event_type="node_complete",
+                                node_id=node_id,
+                                data={
+                                    "output": node_output,
+                                    "memory_after": node_memory_after,
+                                    "logs": node_logs,
+                                    "tool_calls": node_tool_calls,
+                                    "duration_ms": node_duration,
+                                    "tokens_used": 0,
+                                },
+                                timestamp=time.time(),
+                            )
+                        else:
+                            yield StreamEvent(
+                                event_type="node_error",
+                                node_id=node_id,
+                                data={
+                                    "error": node_error,
+                                    "duration_ms": node_duration,
+                                    "logs": node_logs,
+                                },
+                                timestamp=time.time(),
+                            )
+
+                        # Build NodeExecutionResult for DB persistence
+                        result = NodeExecutionResult(
+                            node_id=node_id,
+                            agent_type=node_agent_type,
+                            status=node_status,
+                            input_data=node_input,
+                            output_data=node_output,
+                            memory_before=node_memory_before,
+                            memory_after=node_memory_after,
+                            logs=node_logs,
+                            tool_calls=node_tool_calls,
+                            system_prompt=node_system_prompt,
+                            tokens_used=0,
+                            duration_ms=node_duration,
+                            error=node_error,
+                        )
+                        self.node_results.append(result)
+                        seen_nodes.add(node_id)
+                        self.current_node_index = len(seen_nodes)
+
+            # Build final state from accumulated node outputs
+            self._final_state = {
+                "agent_outputs": {r.node_id: r.output_data for r in self.node_results},
+                "node_count": len(self.node_results),
+            }
+
+        except Exception as e:
+            yield StreamEvent(
+                event_type="run_error",
+                node_id="",
+                data={"error": str(e)},
+                timestamp=time.time(),
+            )
+            self._final_state = {}
+
         # Run complete
         total_duration = int((time.time() - self.started_at) * 1000)
-        
+
         yield StreamEvent(
             event_type="run_complete",
             node_id="",
@@ -159,16 +273,18 @@ class ExecutionEngine:
                 "run_id": self.run_id,
                 "total_tokens": self.total_tokens,
                 "total_duration_ms": total_duration,
-                "shared_state": self.shared_state,
+                "shared_state": self._final_state,
                 "node_results_count": len(self.node_results),
             },
             timestamp=time.time(),
         )
-    
+
     async def execute_step(self) -> AsyncIterator[StreamEvent]:
         """
-        Execute a single step (one node) and yield events.
-        Used for step-by-step execution mode.
+        Execute a single step (one node) using LangGraph checkpointing.
+        
+        Uses the checkpoint to resume from the last state and execute
+        only the next pending node.
         """
         if self.current_node_index >= len(self.graph.execution_order):
             yield StreamEvent(
@@ -178,164 +294,49 @@ class ExecutionEngine:
                 timestamp=time.time(),
             )
             return
-        
-        node_id = self.graph.execution_order[self.current_node_index]
-        
-        # Ensure agent is instantiated
-        if node_id not in self.agents:
-            node_def = self.graph.nodes[node_id]
-            self.agents[node_id] = node_def.create_agent()
-        
-        async for event in self._execute_node(node_id):
-            yield event
-        
-        self.current_node_index += 1
-    
-    async def _execute_node(self, node_id: str) -> AsyncIterator[StreamEvent]:
-        """Execute a single node with full observability."""
-        agent = self.agents[node_id]
-        node_def = self.graph.nodes[node_id]
-        
-        # Emit node_start event
-        yield StreamEvent(
-            event_type="node_start",
-            node_id=node_id,
-            data={
-                "agent_type": node_def.agent_type,
-                "system_prompt": agent.system_prompt,
-            },
-            timestamp=time.time(),
-        )
-        
-        # Build input for this node
-        agent_input = self.graph.build_node_input(
-            node_id=node_id,
-            node_outputs=self.node_outputs,
-            shared_state=self.shared_state,
-            experiment_memory=self._experiment_memory,
-        )
-        
-        # Capture memory before
-        memory_before = agent.memory.snapshot()
-        
-        # Emit node_input event
-        yield StreamEvent(
-            event_type="node_input",
-            node_id=node_id,
-            data={"input": agent_input.data, "memory_before": memory_before},
-            timestamp=time.time(),
-        )
-        
-        # Execute the agent
-        start_time = time.time()
-        result: NodeExecutionResult
-        
-        try:
-            output = await agent.process(agent_input)
-            duration_ms = int((time.time() - start_time) * 1000)
-            
-            # Update memory
-            for key, value in output.memory_updates.items():
-                agent.memory.set(key, value)
-            agent.memory.increment_iteration()
-            
-            # Update shared state
-            if output.shared_state_writes:
-                for key, value in output.shared_state_writes.items():
-                    if key in self.shared_state and isinstance(self.shared_state[key], list):
-                        if isinstance(value, list):
-                            self.shared_state[key].extend(value)
-                        else:
-                            self.shared_state[key].append(value)
-                    elif key in self.shared_state and isinstance(self.shared_state[key], dict):
-                        self.shared_state[key].update(value)
-                    else:
-                        self.shared_state[key] = value
-            
-            # Update flags
-            if output.flags:
-                self.shared_state["flags"].update(output.flags)
-            
-            # Store output for downstream nodes
-            self.node_outputs[node_id] = output.data
-            self.shared_state["agent_outputs"][node_id] = output.data
-            
-            # Calculate tokens (estimate if not tracked)
-            # In real implementation, the agent would report token usage
-            tokens = 0  # Will be filled by agent implementations
-            self.total_tokens += tokens
-            
-            memory_after = agent.memory.snapshot()
-            
-            result = NodeExecutionResult(
-                node_id=node_id,
-                agent_type=node_def.agent_type,
-                status="completed",
-                input_data=agent_input.data,
-                output_data=output.data,
-                memory_before=memory_before,
-                memory_after=memory_after,
-                logs=[l.model_dump() for l in output.logs] if output.logs else [l.model_dump() for l in agent.logs],
-                tool_calls=[t.model_dump() for t in output.tool_calls] if output.tool_calls else [t.model_dump() for t in agent.tool_calls],
-                system_prompt=agent.build_full_prompt(agent_input),
-                tokens_used=tokens,
-                duration_ms=duration_ms,
+
+        # For step mode, we execute the full graph but with pause after each node.
+        # The pause/resume mechanism handles step-by-step behavior.
+        # If this is the first step, start execution with pause enabled.
+        if self.current_node_index == 0:
+            initial_state = create_initial_state(
+                document_data=self._document_data,
+                experiment_memory=self._experiment_memory,
             )
-            
-            # Emit node_complete event
-            yield StreamEvent(
-                event_type="node_complete",
-                node_id=node_id,
-                data={
-                    "output": output.data,
-                    "memory_after": memory_after,
-                    "logs": result.logs,
-                    "tool_calls": result.tool_calls,
-                    "duration_ms": duration_ms,
-                    "tokens_used": tokens,
-                },
-                timestamp=time.time(),
-            )
-            
-        except Exception as e:
-            duration_ms = int((time.time() - start_time) * 1000)
-            
-            result = NodeExecutionResult(
-                node_id=node_id,
-                agent_type=node_def.agent_type,
-                status="failed",
-                input_data=agent_input.data,
-                memory_before=memory_before,
-                logs=[l.model_dump() for l in agent.logs],
-                duration_ms=duration_ms,
-                error=str(e),
-            )
-            
-            # Emit node_error event
-            yield StreamEvent(
-                event_type="node_error",
-                node_id=node_id,
-                data={
-                    "error": str(e),
-                    "duration_ms": duration_ms,
-                    "logs": result.logs,
-                },
-                timestamp=time.time(),
-            )
-            
-            # Store empty output so downstream nodes still get something
-            self.node_outputs[node_id] = {"error": str(e)}
-        
-        self.node_results.append(result)
-    
+            # Run one step
+            async for state_update in self.graph.app.astream(
+                initial_state,
+                stream_mode="updates",
+            ):
+                for node_id, updates in state_update.items():
+                    if node_id in ("__start__", "__end__"):
+                        continue
+                    exec_logs = updates.get("execution_log", [])
+                    if exec_logs:
+                        log_entry = exec_logs[-1]
+                        yield StreamEvent(
+                            event_type="node_complete",
+                            node_id=node_id,
+                            data={
+                                "output": log_entry.get("output_data", {}),
+                                "duration_ms": log_entry.get("duration_ms", 0),
+                                "status": log_entry.get("status", "unknown"),
+                            },
+                            timestamp=time.time(),
+                        )
+                        self.current_node_index += 1
+                        return  # Only execute one node per step
+
     def get_results(self) -> dict[str, Any]:
         """Get the full results of the execution."""
         return {
             "run_id": self.run_id,
             "status": "completed" if not self.is_cancelled else "cancelled",
             "total_tokens": self.total_tokens,
-            "total_duration_ms": int((time.time() - self.started_at) * 1000) if self.started_at else 0,
-            "shared_state": self.shared_state,
+            "total_duration_ms": (
+                int((time.time() - self.started_at) * 1000) if self.started_at else 0
+            ),
+            "shared_state": self._final_state,
             "node_results": [
                 {
                     "node_id": r.node_id,

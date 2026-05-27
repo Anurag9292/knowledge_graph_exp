@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.engine.compiler import compile_graph
+from app.engine.compiler import compile_graph, validate_graph as validate_graph_structure
 from app.models.database import get_db
 from app.models.graph import GraphDefinition
 
@@ -192,9 +192,9 @@ async def validate_graph(
                     f"Node '{node.get('id', '?')}' references unknown agent type: '{agent_type}'"
                 )
 
-    # Try to compile (checks for cycles and edge validity)
+    # Validate graph structure (checks for cycles and edge validity) without creating agents
     try:
-        compiled = compile_graph({"nodes": nodes, "edges": edges})
+        compiled = validate_graph_structure({"nodes": nodes, "edges": edges})
         return GraphValidationResponse(
             valid=len(errors) == 0,
             execution_order=compiled.execution_order if not errors else None,

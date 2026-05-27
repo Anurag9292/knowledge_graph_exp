@@ -1,11 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Brain, ArrowRightLeft, MemoryStick, ScrollText, Wrench } from 'lucide-react';
+import { X, Brain, ArrowRightLeft, MemoryStick, ScrollText, Wrench, Plus, Trash2 } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import { useExecutionStore } from '@/stores/executionStore';
 import { useGraphStore } from '@/stores/graphStore';
 import { getAgentIcon, formatDuration, formatTokens } from '@/lib/utils';
+import { ToolDefinition } from '@/types';
 
 type Tab = 'config' | 'input' | 'output' | 'memory' | 'logs' | 'tools';
 
@@ -216,42 +217,194 @@ export function NodeInspector() {
         )}
 
         {activeTab === 'tools' && (
-          <div>
-            <h4 className="text-xs font-semibold text-gray-600 mb-2">Tool Calls</h4>
-            {execution?.tool_calls_json && execution.tool_calls_json.length > 0 ? (
-              <div className="space-y-3">
-                {execution.tool_calls_json.map((tc, i) => (
-                  <div key={i} className="border border-gray-200 rounded-md overflow-hidden">
-                    <div className="px-3 py-1.5 bg-gray-50 flex items-center justify-between">
-                      <span className="text-xs font-medium text-gray-700">🔧 {tc.tool_name}</span>
-                      <span className="text-xs text-gray-400">{tc.duration_ms}ms</span>
-                    </div>
-                    <div className="p-2">
-                      <p className="text-xs text-gray-500 mb-1">Input:</p>
-                      <pre className="text-xs bg-gray-50 rounded p-1.5 overflow-x-auto">
-                        {JSON.stringify(tc.input_data, null, 2)}
-                      </pre>
-                      {tc.output_data && (
-                        <>
-                          <p className="text-xs text-gray-500 mt-2 mb-1">Output:</p>
-                          <pre className="text-xs bg-green-50 rounded p-1.5 overflow-x-auto">
-                            {JSON.stringify(tc.output_data, null, 2)}
-                          </pre>
-                        </>
-                      )}
-                      {tc.error && (
-                        <p className="text-xs text-red-500 mt-1">Error: {tc.error}</p>
-                      )}
-                    </div>
+          <ToolsTab
+            nodeId={selectedNodeId}
+            config={config}
+            execution={execution}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+// ─── Tools Tab Component ─────────────────────────────────────────────────────
+
+function ToolsTab({ nodeId, config, execution }: { nodeId: string; config: any; execution: any }) {
+  const { updateNodeConfig } = useGraphStore();
+  const tools: ToolDefinition[] = config.tools || [];
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+
+  const addTool = () => {
+    const newTool: ToolDefinition = {
+      name: '',
+      description: '',
+      parameters: { type: 'object', properties: {} },
+      implementation_type: 'builtin',
+    };
+    updateNodeConfig(nodeId, { tools: [...tools, newTool] });
+    setEditingIndex(tools.length);
+  };
+
+  const removeTool = (index: number) => {
+    const updated = tools.filter((_, i) => i !== index);
+    updateNodeConfig(nodeId, { tools: updated });
+    if (editingIndex === index) setEditingIndex(null);
+  };
+
+  const updateTool = (index: number, updates: Partial<ToolDefinition>) => {
+    const updated = tools.map((t, i) => (i === index ? { ...t, ...updates } : t));
+    updateNodeConfig(nodeId, { tools: updated });
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Tool Configuration */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-xs font-semibold text-gray-600">Configured Tools</h4>
+          <button
+            onClick={addTool}
+            className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+          >
+            <Plus className="w-3 h-3" /> Add Tool
+          </button>
+        </div>
+
+        {tools.length === 0 ? (
+          <p className="text-xs text-gray-400 italic">No tools configured. Add tools to enable function calling.</p>
+        ) : (
+          <div className="space-y-2">
+            {tools.map((tool, i) => (
+              <div key={i} className="border border-gray-200 rounded-md overflow-hidden">
+                <div
+                  className="px-3 py-2 bg-gray-50 flex items-center justify-between cursor-pointer"
+                  onClick={() => setEditingIndex(editingIndex === i ? null : i)}
+                >
+                  <span className="text-xs font-medium text-gray-700 flex items-center gap-1">
+                    <Wrench className="w-3 h-3" />
+                    {tool.name || '(unnamed)'}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400">{tool.implementation_type}</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); removeTool(i); }}
+                      className="text-red-400 hover:text-red-600"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
                   </div>
-                ))}
+                </div>
+
+                {editingIndex === i && (
+                  <div className="p-3 space-y-2 border-t border-gray-200">
+                    <div>
+                      <label className="text-xs text-gray-500">Name</label>
+                      <input
+                        type="text"
+                        value={tool.name}
+                        onChange={(e) => updateTool(i, { name: e.target.value })}
+                        placeholder="e.g. search_web"
+                        className="mt-0.5 w-full text-xs border border-gray-300 rounded p-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Description</label>
+                      <input
+                        type="text"
+                        value={tool.description}
+                        onChange={(e) => updateTool(i, { description: e.target.value })}
+                        placeholder="What this tool does"
+                        className="mt-0.5 w-full text-xs border border-gray-300 rounded p-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Implementation Type</label>
+                      <select
+                        value={tool.implementation_type}
+                        onChange={(e) => updateTool(i, { implementation_type: e.target.value as any })}
+                        className="mt-0.5 w-full text-xs border border-gray-300 rounded p-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      >
+                        <option value="builtin">Built-in</option>
+                        <option value="custom_python">Custom Python</option>
+                        <option value="api_call">API Call</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Parameters (JSON Schema)</label>
+                      <textarea
+                        value={JSON.stringify(tool.parameters, null, 2)}
+                        onChange={(e) => {
+                          try { updateTool(i, { parameters: JSON.parse(e.target.value) }); } catch {}
+                        }}
+                        className="mt-0.5 w-full h-16 text-xs font-mono border border-gray-300 rounded p-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      />
+                    </div>
+                    {tool.implementation_type === 'custom_python' && (
+                      <div>
+                        <label className="text-xs text-gray-500">Python Code</label>
+                        <textarea
+                          value={tool.implementation_code || ''}
+                          onChange={(e) => updateTool(i, { implementation_code: e.target.value })}
+                          placeholder="def execute(**kwargs):&#10;    return result"
+                          className="mt-0.5 w-full h-24 text-xs font-mono border border-gray-300 rounded p-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        />
+                      </div>
+                    )}
+                    {tool.implementation_type === 'api_call' && (
+                      <div>
+                        <label className="text-xs text-gray-500">API Endpoint</label>
+                        <input
+                          type="text"
+                          value={tool.api_endpoint || ''}
+                          onChange={(e) => updateTool(i, { api_endpoint: e.target.value })}
+                          placeholder="https://api.example.com/tool"
+                          className="mt-0.5 w-full text-xs border border-gray-300 rounded p-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            ) : (
-              <p className="text-xs text-gray-400 italic">No tool calls recorded.</p>
-            )}
+            ))}
           </div>
         )}
       </div>
+
+      {/* Tool Call History (from execution) */}
+      {execution?.tool_calls_json && execution.tool_calls_json.length > 0 && (
+        <div>
+          <h4 className="text-xs font-semibold text-gray-600 mb-2">Tool Call History</h4>
+          <div className="space-y-2">
+            {execution.tool_calls_json.map((tc: any, i: number) => (
+              <div key={i} className="border border-gray-200 rounded-md overflow-hidden">
+                <div className="px-3 py-1.5 bg-gray-50 flex items-center justify-between">
+                  <span className="text-xs font-medium text-gray-700">🔧 {tc.tool_name}</span>
+                  <span className="text-xs text-gray-400">{tc.duration_ms}ms</span>
+                </div>
+                <div className="p-2">
+                  <p className="text-xs text-gray-500 mb-1">Input:</p>
+                  <pre className="text-xs bg-gray-50 rounded p-1.5 overflow-x-auto">
+                    {JSON.stringify(tc.input_data, null, 2)}
+                  </pre>
+                  {tc.output_data && (
+                    <>
+                      <p className="text-xs text-gray-500 mt-2 mb-1">Output:</p>
+                      <pre className="text-xs bg-green-50 rounded p-1.5 overflow-x-auto">
+                        {JSON.stringify(tc.output_data, null, 2)}
+                      </pre>
+                    </>
+                  )}
+                  {tc.error && (
+                    <p className="text-xs text-red-500 mt-1">Error: {tc.error}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

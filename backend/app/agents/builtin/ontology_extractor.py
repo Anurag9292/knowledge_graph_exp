@@ -54,12 +54,42 @@ Guidelines:
     default_model: str = "gpt-4o"
     default_temperature: float = 0.2
 
+    def _extract_text_from_structure(self, document_structure: dict) -> str:
+        """Extract plain text from a document_structure object."""
+        # Try content array (list of sentences/paragraphs with 'text' fields)
+        content = document_structure.get("content", [])
+        if content:
+            text_parts = []
+            for item in content:
+                if isinstance(item, dict) and "text" in item:
+                    text_parts.append(item["text"])
+                elif isinstance(item, str):
+                    text_parts.append(item)
+            if text_parts:
+                return " ".join(text_parts)
+
+        # Try raw_text field
+        if document_structure.get("raw_text"):
+            return document_structure["raw_text"]
+
+        # Try summary as a last resort
+        if document_structure.get("summary"):
+            return document_structure["summary"]
+
+        return ""
+
     async def process(self, agent_input: AgentInput) -> AgentOutput:
         """Extract ontology from text."""
         self.log("Starting ontology extraction")
 
         text = agent_input.data.get("text", "")
         document_structure = agent_input.data.get("document_structure")
+
+        # If no direct text provided, try to extract it from document_structure
+        if not text and document_structure:
+            text = self._extract_text_from_structure(document_structure)
+            if text:
+                self.log("Extracted text from document_structure")
 
         if not text:
             self.log("No text provided in input", level="error")

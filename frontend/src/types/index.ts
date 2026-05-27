@@ -75,6 +75,15 @@ export interface GraphEdge {
   source_node_id: string;
   target_node_id: string;
   data_mapping: Record<string, string>;
+  edge_type: 'default' | 'conditional' | 'loop';
+  condition?: EdgeCondition;
+}
+
+export interface EdgeCondition {
+  field: string;           // Field in source output to evaluate (e.g., "flags.needs_review")
+  operator: 'equals' | 'not_equals' | 'contains' | 'greater_than' | 'less_than' | 'exists' | 'not_exists';
+  value?: any;             // Value to compare against (not needed for exists/not_exists)
+  max_iterations?: number; // For loop edges: max times to loop (default 5)
 }
 
 // Experiment types

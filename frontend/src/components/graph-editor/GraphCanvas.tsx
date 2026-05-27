@@ -1,18 +1,20 @@
 'use client';
 
-import { useCallback, useRef, DragEvent } from 'react';
+import { useCallback, useRef, useState, DragEvent } from 'react';
 import ReactFlow, {
   Background,
   Controls,
   MiniMap,
   ReactFlowProvider,
   ReactFlowInstance,
+  Edge,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
 import { useGraphStore } from '@/stores/graphStore';
 import { useAppStore } from '@/stores/appStore';
 import { AgentNode } from './AgentNode';
+import { EdgeInspector } from './EdgeInspector';
 import { getAgentColor } from '@/lib/utils';
 
 const nodeTypes = { agentNode: AgentNode };
@@ -20,6 +22,7 @@ const nodeTypes = { agentNode: AgentNode };
 function GraphCanvasInner() {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const reactFlowInstance = useRef<ReactFlowInstance | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
 
   const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode } = useGraphStore();
   const { agentTypes, selectNode } = useAppStore();
@@ -53,10 +56,16 @@ function GraphCanvasInner() {
 
   const onPaneClick = useCallback(() => {
     selectNode(null);
+    setSelectedEdgeId(null);
+  }, [selectNode]);
+
+  const onEdgeClick = useCallback((_event: React.MouseEvent, edge: Edge) => {
+    setSelectedEdgeId(edge.id);
+    selectNode(null);
   }, [selectNode]);
 
   return (
-    <div ref={reactFlowWrapper} className="flex-1 h-full">
+    <div ref={reactFlowWrapper} className="flex-1 h-full relative">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -67,6 +76,7 @@ function GraphCanvasInner() {
         onDrop={onDrop}
         onDragOver={onDragOver}
         onPaneClick={onPaneClick}
+        onEdgeClick={onEdgeClick}
         nodeTypes={nodeTypes}
         defaultEdgeOptions={{ type: 'smoothstep', animated: false }}
         fitView
@@ -84,6 +94,14 @@ function GraphCanvasInner() {
           className="!shadow-md"
         />
       </ReactFlow>
+
+      {/* Edge Inspector overlay */}
+      {selectedEdgeId && (
+        <EdgeInspector
+          edgeId={selectedEdgeId}
+          onClose={() => setSelectedEdgeId(null)}
+        />
+      )}
     </div>
   );
 }

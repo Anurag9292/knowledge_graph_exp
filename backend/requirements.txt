@@ -16,3 +16,6 @@ Pillow==10.1.0
 numpy==1.26.2
 httpx==0.25.2
 python-dotenv==1.0.0
+langgraph>=1.2.0
+langchain-core>=1.4.0
+langchain-openai>=1.2.0
