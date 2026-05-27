@@ -118,7 +118,7 @@ export function EdgeInspector({ edgeId, onClose }: Props) {
               <label className="text-xs text-gray-500">Operator</label>
               <select
                 value={condOperator}
-                onChange={(e) => setCondOperator(e.target.value)}
+                onChange={(e) => setCondOperator(e.target.value as any)}
                 className="mt-0.5 w-full text-xs border border-gray-300 rounded p-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
               >
                 <option value="exists">exists</option>
