@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Play, Pause, Square, SkipForward, Save, Trash2 } from 'lucide-react';
+import { Play, Pause, Square, SkipForward, Save, Trash2, Network } from 'lucide-react';
 import { useGraphStore } from '@/stores/graphStore';
 import { useExecutionStore } from '@/stores/executionStore';
 import { useAppStore } from '@/stores/appStore';
@@ -10,7 +10,7 @@ import { graphsApi, experimentsApi } from '@/lib/api';
 export function Toolbar() {
   const { graphId, graphName, graphDescription, setGraphMeta, getGraphJson, clearGraph } = useGraphStore();
   const { isRunning, isPaused, startExecution, stopExecution, pauseExecution, resumeExecution, stepExecution } = useExecutionStore();
-  const { inputText, setActiveTab } = useAppStore();
+  const { inputText, setActiveTab, kgViewerOpen, toggleKgViewer } = useAppStore();
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
 
@@ -137,6 +137,19 @@ export function Toolbar() {
       )}
 
       <div className="w-px h-6 bg-gray-200" />
+
+      {/* KG Viewer toggle */}
+      <button
+        onClick={() => toggleKgViewer()}
+        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition ${
+          kgViewerOpen
+            ? 'text-purple-700 bg-purple-100 hover:bg-purple-200'
+            : 'text-gray-600 bg-gray-100 hover:bg-gray-200'
+        }`}
+      >
+        <Network className="w-3.5 h-3.5" />
+        KG View
+      </button>
 
       {/* Navigation */}
       <button

@@ -11,6 +11,7 @@ interface AppState {
   inspectorOpen: boolean;
   activeTab: 'editor' | 'experiments' | 'agents';
   inputPanelOpen: boolean;
+  kgViewerOpen: boolean;
 
   // Input
   inputText: string;
@@ -22,6 +23,7 @@ interface AppState {
   toggleInspector: (open?: boolean) => void;
   setActiveTab: (tab: 'editor' | 'experiments' | 'agents') => void;
   toggleInputPanel: (open?: boolean) => void;
+  toggleKgViewer: (open?: boolean) => void;
   setInputText: (text: string) => void;
   setInputDocumentPath: (path: string | null) => void;
 }
@@ -33,6 +35,7 @@ export const useAppStore = create<AppState>((set) => ({
   inspectorOpen: false,
   activeTab: 'editor',
   inputPanelOpen: true,
+  kgViewerOpen: false,
   inputText: '',
   inputDocumentPath: null,
 
@@ -41,6 +44,7 @@ export const useAppStore = create<AppState>((set) => ({
   toggleInspector: (open) => set((state) => ({ inspectorOpen: open ?? !state.inspectorOpen })),
   setActiveTab: (tab) => set({ activeTab: tab }),
   toggleInputPanel: (open) => set((state) => ({ inputPanelOpen: open ?? !state.inputPanelOpen })),
+  toggleKgViewer: (open) => set((state) => ({ kgViewerOpen: open ?? !state.kgViewerOpen })),
   setInputText: (text) => set({ inputText: text }),
   setInputDocumentPath: (path) => set({ inputDocumentPath: path }),
 }));
