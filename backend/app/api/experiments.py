@@ -693,3 +693,120 @@ async def cancel_run(
             await db_session.commit()
 
     return {"status": "cancelled", "run_id": run_id}
+
+
+# ─── Compare Endpoint ─────────────────────────────────────────────────────────
+
+
+@router.get("/compare/runs")
+async def compare_runs(
+    run_a: str,
+    run_b: str,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """
+    Compare two runs side-by-side.
+    
+    Matches node executions by agent_type_name (not node_id) so runs
+    from different pipelines can be compared.
+    
+    Returns per-agent comparison with input/output diffs and metrics.
+    """
+    # Load both runs with their node executions
+    stmt_a = (
+        select(ExperimentRun)
+        .options(selectinload(ExperimentRun.node_executions))
+        .where(ExperimentRun.id == run_a)
+    )
+    stmt_b = (
+        select(ExperimentRun)
+        .options(selectinload(ExperimentRun.node_executions))
+        .where(ExperimentRun.id == run_b)
+    )
+
+    result_a = await db.execute(stmt_a)
+    result_b = await db.execute(stmt_b)
+    run_a_obj = result_a.scalar_one_or_none()
+    run_b_obj = result_b.scalar_one_or_none()
+
+    if not run_a_obj:
+        raise HTTPException(status_code=404, detail=f"Run '{run_a}' not found")
+    if not run_b_obj:
+        raise HTTPException(status_code=404, detail=f"Run '{run_b}' not found")
+
+    # Group node executions by agent_type_name
+    a_by_type: dict[str, list] = {}
+    for ne in run_a_obj.node_executions:
+        a_by_type.setdefault(ne.agent_type_name, []).append(ne)
+
+    b_by_type: dict[str, list] = {}
+    for ne in run_b_obj.node_executions:
+        b_by_type.setdefault(ne.agent_type_name, []).append(ne)
+
+    all_types = sorted(set(a_by_type.keys()) | set(b_by_type.keys()))
+
+    # Build comparisons
+    comparisons = []
+    for agent_type in all_types:
+        a_nodes = a_by_type.get(agent_type, [])
+        b_nodes = b_by_type.get(agent_type, [])
+
+        for i in range(max(len(a_nodes), len(b_nodes))):
+            ne_a = a_nodes[i] if i < len(a_nodes) else None
+            ne_b = b_nodes[i] if i < len(b_nodes) else None
+
+            def _node_metrics(ne):
+                if not ne:
+                    return None
+                tokens = ne.tokens_used or 0
+                duration = ne.duration_ms or 0
+                tok_sec = round(tokens / (duration / 1000), 1) if duration > 0 and tokens > 0 else 0
+                return {
+                    "node_id": ne.node_id,
+                    "status": ne.status,
+                    "duration_ms": duration,
+                    "tokens_used": tokens,
+                    "tok_per_sec": tok_sec,
+                    "input_data": ne.input_data_json,
+                    "output_data": ne.output_data_json,
+                    "error": ne.error_message,
+                }
+
+            comparisons.append({
+                "agent_type": agent_type,
+                "in_run_a": ne_a is not None,
+                "in_run_b": ne_b is not None,
+                "run_a": _node_metrics(ne_a),
+                "run_b": _node_metrics(ne_b),
+            })
+
+    # Summary
+    agents_matched = sum(1 for c in comparisons if c["in_run_a"] and c["in_run_b"])
+    only_in_a = sum(1 for c in comparisons if c["in_run_a"] and not c["in_run_b"])
+    only_in_b = sum(1 for c in comparisons if not c["in_run_a"] and c["in_run_b"])
+
+    return {
+        "run_a": {
+            "id": run_a_obj.id,
+            "session_id": run_a_obj.session_id,
+            "status": run_a_obj.status,
+            "total_duration_ms": run_a_obj.total_duration_ms,
+            "total_tokens_used": run_a_obj.total_tokens_used,
+            "started_at": _dt_to_str(run_a_obj.started_at),
+        },
+        "run_b": {
+            "id": run_b_obj.id,
+            "session_id": run_b_obj.session_id,
+            "status": run_b_obj.status,
+            "total_duration_ms": run_b_obj.total_duration_ms,
+            "total_tokens_used": run_b_obj.total_tokens_used,
+            "started_at": _dt_to_str(run_b_obj.started_at),
+        },
+        "comparisons": comparisons,
+        "summary": {
+            "agents_matched": agents_matched,
+            "agents_only_in_a": only_in_a,
+            "agents_only_in_b": only_in_b,
+            "total_agents": len(comparisons),
+        },
+    }

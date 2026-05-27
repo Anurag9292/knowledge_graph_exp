@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Clock, Zap, Play, Eye } from 'lucide-react';
+import { ArrowLeft, Clock, Zap, Play, Eye, ArrowLeftRight } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import { useExecutionStore } from '@/stores/executionStore';
 import { useGraphStore } from '@/stores/graphStore';
 import { experimentsApi } from '@/lib/api';
 import { ExperimentSession, ExperimentRun } from '@/types';
 import { formatDuration, formatTokens, getStatusColor } from '@/lib/utils';
+import { CompareView } from './CompareView';
 
 export function ExperimentDashboard() {
   const { setActiveTab } = useAppStore();
@@ -17,6 +18,8 @@ export function ExperimentDashboard() {
   const [selectedExp, setSelectedExp] = useState<string | null>(null);
   const [runs, setRuns] = useState<ExperimentRun[]>([]);
   const [loading, setLoading] = useState(true);
+  const [compareSelection, setCompareSelection] = useState<string[]>([]);
+  const [showCompare, setShowCompare] = useState(false);
 
   useEffect(() => {
     loadExperiments();
@@ -132,36 +135,75 @@ export function ExperimentDashboard() {
 
                 {/* Expanded runs list */}
                 {selectedExp === exp.id && runs.length > 0 && (
-                  <div className="mt-4 border-t border-gray-100 pt-3 space-y-2">
-                    {runs.map((run) => (
-                      <div
-                        key={run.id}
-                        onClick={() => viewRun(exp.id, run.id)}
-                        className="flex items-center justify-between p-3 rounded-md hover:bg-blue-50 cursor-pointer border border-transparent hover:border-blue-200 transition"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: getStatusColor(run.status) }} />
-                          <span className="text-xs font-medium text-gray-600">{run.status}</span>
-                        </div>
-                        <div className="flex items-center gap-4 text-xs text-gray-400">
-                          {run.total_duration_ms && (
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-3 h-3" /> {formatDuration(run.total_duration_ms)}
-                            </span>
-                          )}
-                          <span className="flex items-center gap-1">
-                            <Zap className="w-3 h-3" /> {formatTokens(run.total_tokens_used)} tokens
-                          </span>
-                          <span>{new Date(run.created_at).toLocaleTimeString()}</span>
-                          <button
-                            className="flex items-center gap-1 px-2 py-0.5 text-blue-600 bg-blue-50 rounded hover:bg-blue-100"
-                            title="View this run on canvas"
-                          >
-                            <Eye className="w-3 h-3" /> View
-                          </button>
-                        </div>
+                  <div className="mt-4 border-t border-gray-100 pt-3">
+                    {/* Compare button */}
+                    {compareSelection.length === 2 && (
+                      <div className="mb-3 flex items-center gap-2">
+                        <button
+                          onClick={() => setShowCompare(true)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-purple-600 rounded-md hover:bg-purple-700 transition"
+                        >
+                          <ArrowLeftRight className="w-3.5 h-3.5" /> Compare Selected Runs
+                        </button>
+                        <button
+                          onClick={() => setCompareSelection([])}
+                          className="text-xs text-gray-400 hover:text-gray-600"
+                        >
+                          Clear
+                        </button>
                       </div>
-                    ))}
+                    )}
+                    {compareSelection.length === 1 && (
+                      <p className="mb-2 text-xs text-purple-600">Select one more run to compare</p>
+                    )}
+
+                    <div className="space-y-2">
+                      {runs.map((run) => (
+                        <div
+                          key={run.id}
+                          className={`flex items-center justify-between p-3 rounded-md hover:bg-blue-50 cursor-pointer border transition ${
+                            compareSelection.includes(run.id) ? 'border-purple-300 bg-purple-50' : 'border-transparent hover:border-blue-200'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            {/* Compare checkbox */}
+                            <input
+                              type="checkbox"
+                              checked={compareSelection.includes(run.id)}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                if (compareSelection.includes(run.id)) {
+                                  setCompareSelection(compareSelection.filter(id => id !== run.id));
+                                } else if (compareSelection.length < 2) {
+                                  setCompareSelection([...compareSelection, run.id]);
+                                }
+                              }}
+                              className="w-3.5 h-3.5 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                            />
+                            <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: getStatusColor(run.status) }} />
+                            <span className="text-xs font-medium text-gray-600">{run.status}</span>
+                          </div>
+                          <div className="flex items-center gap-4 text-xs text-gray-400">
+                            {run.total_duration_ms && (
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" /> {formatDuration(run.total_duration_ms)}
+                              </span>
+                            )}
+                            <span className="flex items-center gap-1">
+                              <Zap className="w-3 h-3" /> {formatTokens(run.total_tokens_used)} tokens
+                            </span>
+                            <span>{new Date(run.created_at).toLocaleTimeString()}</span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); viewRun(exp.id, run.id); }}
+                              className="flex items-center gap-1 px-2 py-0.5 text-blue-600 bg-blue-50 rounded hover:bg-blue-100"
+                              title="View this run on canvas"
+                            >
+                              <Eye className="w-3 h-3" /> View
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -169,6 +211,15 @@ export function ExperimentDashboard() {
           </div>
         )}
       </div>
+
+      {/* Compare modal */}
+      {showCompare && compareSelection.length === 2 && (
+        <CompareView
+          runAId={compareSelection[0]}
+          runBId={compareSelection[1]}
+          onClose={() => { setShowCompare(false); setCompareSelection([]); }}
+        />
+      )}
     </div>
   );
 }

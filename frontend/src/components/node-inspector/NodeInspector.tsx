@@ -62,7 +62,10 @@ export function NodeInspector() {
       {execution && (
         <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 flex gap-4 text-xs text-gray-500">
           {execution.duration_ms && <span>⏱ {formatDuration(execution.duration_ms)}</span>}
-          {execution.tokens_used !== undefined && <span>🎫 {formatTokens(execution.tokens_used)} tokens</span>}
+          {execution.tokens_used !== undefined && execution.tokens_used > 0 && <span>🎫 {formatTokens(execution.tokens_used)} tokens</span>}
+          {execution.tokens_used !== undefined && execution.tokens_used > 0 && execution.duration_ms && execution.duration_ms > 0 && (
+            <span>⚡ {Math.round(execution.tokens_used / (execution.duration_ms / 1000))} tok/s</span>
+          )}
           <span className={`font-medium ${execution.status === 'completed' ? 'text-green-600' : execution.status === 'failed' ? 'text-red-600' : 'text-blue-600'}`}>
             {execution.status}
           </span>

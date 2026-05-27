@@ -216,6 +216,7 @@ class AgentOutput(BaseModel):
     flags: dict[str, Any] = {}  # Flags for conditional routing
     logs: list[LogEntry] = []
     tool_calls: list[ToolCall] = []
+    tokens_used: int = 0  # Token count from LLM API response
 
 
 class StreamEvent(BaseModel):
@@ -267,6 +268,13 @@ class BaseAgent(ABC):
         """Add a log entry."""
         entry = LogEntry(timestamp=time.time(), level=level, message=message)
         self.logs.append(entry)
+
+    def _extract_usage(self, result: dict[str, Any]) -> int:
+        """Extract and remove _usage metadata from LLM result. Returns token count."""
+        usage = result.pop("_usage", None)
+        if usage and isinstance(usage, dict):
+            return usage.get("total_tokens", 0)
+        return 0
     
     def build_full_prompt(self, agent_input: AgentInput) -> str:
         """
