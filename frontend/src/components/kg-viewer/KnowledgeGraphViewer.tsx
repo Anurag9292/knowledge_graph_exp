@@ -114,7 +114,7 @@ export function KnowledgeGraphViewer({ graph }: Props) {
                 textAnchor="middle"
                 fontWeight="500"
               >
-                {node.label.length > 15 ? node.label.slice(0, 15) + '...' : node.label}
+                {(node.label || node.id || '').length > 15 ? (node.label || node.id || '').slice(0, 15) + '...' : (node.label || node.id || '')}
               </text>
               <text
                 x={pos.x}
@@ -124,7 +124,7 @@ export function KnowledgeGraphViewer({ graph }: Props) {
                 textAnchor="middle"
                 fontWeight="600"
               >
-                {node.type.slice(0, 3).toUpperCase()}
+                {(node.type || '?').slice(0, 3).toUpperCase()}
               </text>
             </g>
           );
