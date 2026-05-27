@@ -92,6 +92,9 @@ class AgentRegistry:
                 "is_builtin": True,
                 "vision_enabled": agent_class.vision_enabled,
                 "default_model": agent_class.default_model,
+                "default_temperature": agent_class.default_temperature,
+                "default_max_tokens": agent_class.default_max_tokens,
+                "default_system_prompt": agent_class.default_system_prompt,
             })
         
         for name, config in cls._custom_configs.items():
