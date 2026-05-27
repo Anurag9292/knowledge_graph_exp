@@ -597,6 +597,82 @@ async def get_run(
     )
 
 
+@router.get("/{session_id}/runs/{run_id}/schema")
+async def get_run_schema(
+    session_id: str,
+    run_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """
+    Retrieve the grand schema exported during an ingestion run.
+    
+    The grand schema is a Cypher-optimized JSON file containing:
+    - All node labels (entity types) with descriptions and property keys
+    - All relationship types with source/target constraints
+    - A full entity catalog (exact names for Cypher matching)
+    - Aliases for fuzzy input handling
+    - Ready-to-use Cypher query pattern templates
+    - Structural constraints (valid from/to combinations)
+    
+    This file is intended to be passed to a multi-agent query system
+    to enable accurate Cypher query generation at retrieval time.
+    """
+    # Load run with node executions
+    stmt = (
+        select(ExperimentRun)
+        .options(selectinload(ExperimentRun.node_executions))
+        .where(
+            ExperimentRun.id == run_id,
+            ExperimentRun.session_id == session_id,
+        )
+    )
+    result = await db.execute(stmt)
+    run = result.scalar_one_or_none()
+
+    if not run:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Run '{run_id}' not found in experiment '{session_id}'",
+        )
+
+    if run.status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Run '{run_id}' has not completed (status: {run.status}). Schema is only available after successful completion.",
+        )
+
+    # Find the schema_exporter node execution
+    schema_output = None
+    for ne in run.node_executions:
+        if ne.agent_type_name == "schema_exporter" and ne.output_data_json:
+            schema_output = ne.output_data_json
+            break
+
+    if not schema_output:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"No schema export found for run '{run_id}'. "
+                "The pipeline may not include the schema_exporter agent."
+            ),
+        )
+
+    grand_schema = schema_output.get("grand_schema")
+    if not grand_schema:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Schema exporter ran but produced no grand_schema output.",
+        )
+
+    return {
+        "run_id": run_id,
+        "session_id": session_id,
+        "schema": grand_schema,
+        "schema_file_path": schema_output.get("schema_file_path"),
+        "stats": schema_output.get("stats", {}),
+    }
+
+
 @router.post("/{session_id}/runs/{run_id}/pause", status_code=status.HTTP_200_OK)
 async def pause_run(
     session_id: str,
