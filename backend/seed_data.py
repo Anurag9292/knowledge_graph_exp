@@ -174,6 +174,68 @@ BUILTIN_AGENTS = [
         "tools_json": [],
         "memory_config_json": {"type": "key_value", "initial_state": {}, "max_tokens": 2000, "overflow_strategy": "truncate_oldest", "persistence": "run_only", "sharing": "write_shared", "injection_mode": "none"},
     },
+    {
+        "name": "domain_config",
+        "description": "Domain schema configuration — entity types, relationship types, aliases. Data source node (no LLM).",
+        "category": "configuration",
+        "default_system_prompt": "This is a data source node. It outputs the domain schema stored in its configuration. No LLM is called.",
+        "default_model": "none",
+        "default_temperature": 0.0,
+        "default_max_tokens": 0,
+        "vision_enabled": False,
+        "input_schema_json": [
+            {"field_name": "schema", "type": "object", "description": "Optional schema override", "required": False},
+        ],
+        "output_schema_json": [
+            {"field_name": "schema", "type": "object", "description": "The domain schema configuration"},
+            {"field_name": "entity_types", "type": "list", "description": "List of entity type names"},
+            {"field_name": "relationship_types", "type": "list", "description": "List of relationship type names"},
+        ],
+        "tools_json": [],
+        "memory_config_json": {"type": "key_value", "initial_state": {}, "max_tokens": 0, "overflow_strategy": "truncate_oldest", "persistence": "run_only", "sharing": "write_shared", "injection_mode": "none"},
+    },
+    {
+        "name": "schema_architect",
+        "description": "Analyzes documents to discover and extend the domain schema with new entity/relationship types",
+        "category": "configuration",
+        "default_system_prompt": "You are a knowledge graph schema expert. Analyze documents and extend the schema with new entity types, relationships, or patterns not in the base config.",
+        "default_model": "gpt-4.1-mini",
+        "default_temperature": 0.2,
+        "default_max_tokens": 4096,
+        "vision_enabled": False,
+        "input_schema_json": [
+            {"field_name": "schema", "type": "object", "description": "Current domain schema to extend", "required": True},
+            {"field_name": "text", "type": "string", "description": "Document text to analyze", "required": True},
+        ],
+        "output_schema_json": [
+            {"field_name": "schema", "type": "object", "description": "Merged schema (base + extensions)"},
+            {"field_name": "extensions", "type": "object", "description": "New entity types, relationship types, and aliases discovered"},
+        ],
+        "tools_json": [],
+        "memory_config_json": {"type": "key_value", "initial_state": {}, "max_tokens": 4000, "overflow_strategy": "summarize", "persistence": "run_only", "sharing": "write_shared", "injection_mode": "full"},
+    },
+    {
+        "name": "schema_exporter",
+        "description": "Exports a comprehensive Cypher-optimized schema file from the ingestion results. No LLM — pure data transformation.",
+        "category": "export",
+        "default_system_prompt": "This is a data export node. It collects the merged schema and knowledge graph from upstream agents and produces a grand schema JSON file for query-time use. No LLM is called.",
+        "default_model": "none",
+        "default_temperature": 0.0,
+        "default_max_tokens": 0,
+        "vision_enabled": False,
+        "input_schema_json": [
+            {"field_name": "graph_data", "type": "object", "description": "Knowledge graph nodes and edges from kg_builder", "required": True},
+            {"field_name": "stats", "type": "object", "description": "Graph statistics", "required": False},
+            {"field_name": "schema", "type": "object", "description": "Merged domain schema", "required": False},
+        ],
+        "output_schema_json": [
+            {"field_name": "grand_schema", "type": "object", "description": "The complete Cypher-optimized schema for query-time use"},
+            {"field_name": "schema_file_path", "type": "string", "description": "Path to the persisted schema JSON file"},
+            {"field_name": "stats", "type": "object", "description": "Schema export statistics"},
+        ],
+        "tools_json": [],
+        "memory_config_json": {"type": "key_value", "initial_state": {}, "max_tokens": 0, "overflow_strategy": "truncate_oldest", "persistence": "run_only", "sharing": "read_shared", "injection_mode": "none"},
+    },
 ]
 
 

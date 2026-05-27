@@ -9,6 +9,7 @@ from app.agents.builtin.relationship_extractor import RelationshipExtractorAgent
 from app.agents.builtin.summarizer import SummarizerAgent
 from app.agents.builtin.domain_config import DomainConfigAgent
 from app.agents.builtin.schema_architect import SchemaArchitectAgent
+from app.agents.builtin.schema_exporter import SchemaExporterAgent
 
 __all__ = [
     "StructureInferrerAgent",
@@ -21,4 +22,5 @@ __all__ = [
     "SummarizerAgent",
     "DomainConfigAgent",
     "SchemaArchitectAgent",
+    "SchemaExporterAgent",
 ]

@@ -221,6 +221,8 @@ def _make_node_function(
                         "ontology",
                         "flags",
                         "summaries",
+                        "domain_schema",
+                        "grand_schema",
                     ):
                         # These are dict fields — use the merge reducer
                         state_updates[key] = value if isinstance(value, dict) else {key: value}

@@ -66,6 +66,12 @@ class GraphState(TypedDict, total=False):
     # Ontology / schema
     ontology: Annotated[dict[str, Any], merge_dict]
     
+    # Domain schema (from domain_config / schema_architect)
+    domain_schema: Annotated[dict[str, Any], merge_dict]
+    
+    # Grand schema export (from schema_exporter — Cypher-optimized)
+    grand_schema: Annotated[dict[str, Any], merge_dict]
+    
     # Flags for conditional routing
     flags: Annotated[dict[str, Any], merge_dict]
     
@@ -96,6 +102,8 @@ def create_initial_state(
         knowledge_graph={"nodes": [], "edges": []},
         document_structure={},
         ontology={},
+        domain_schema={},
+        grand_schema={},
         flags={},
         summaries={},
         visual_results=[],

@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_PIPELINE = {
     "name": "Knowledge Graph Pipeline",
-    "description": "Schema-driven knowledge graph pipeline: configure domain → analyze structure → discover schema extensions → extract entities → extract relationships → resolve → build KG.",
+    "description": "Schema-driven knowledge graph pipeline: configure domain → analyze structure → discover schema extensions → extract entities → extract relationships → resolve → build KG → export grand schema.",
     "nodes": [
         {
             "id": "node_domain_config",
@@ -77,6 +77,13 @@ DEFAULT_PIPELINE = {
             "position_y": 200,
             "config": {},
         },
+        {
+            "id": "node_schema_export",
+            "agent_type": "schema_exporter",
+            "position_x": 1850,
+            "position_y": 200,
+            "config": {},
+        },
     ],
     "edges": [
         {
@@ -118,6 +125,13 @@ DEFAULT_PIPELINE = {
             "id": "edge_resolver_to_kg",
             "source_node_id": "node_resolver",
             "target_node_id": "node_kg",
+            "data_mapping": {},
+            "edge_type": "default",
+        },
+        {
+            "id": "edge_kg_to_schema_export",
+            "source_node_id": "node_kg",
+            "target_node_id": "node_schema_export",
             "data_mapping": {},
             "edge_type": "default",
         },
