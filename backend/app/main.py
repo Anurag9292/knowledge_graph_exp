@@ -45,21 +45,21 @@ DEFAULT_PIPELINE = {
         {
             "id": "node_relationships",
             "agent_type": "relationship_extractor",
-            "position_x": 350,
-            "position_y": 320,
+            "position_x": 650,
+            "position_y": 100,
             "config": {},
         },
         {
             "id": "node_resolver",
             "agent_type": "entity_resolver",
-            "position_x": 650,
+            "position_x": 950,
             "position_y": 200,
             "config": {},
         },
         {
             "id": "node_kg",
             "agent_type": "kg_builder",
-            "position_x": 950,
+            "position_x": 1250,
             "position_y": 200,
             "config": {},
         },
@@ -73,9 +73,16 @@ DEFAULT_PIPELINE = {
             "edge_type": "default",
         },
         {
-            "id": "edge_struct_to_rel",
-            "source_node_id": "node_structure",
+            "id": "edge_ontology_to_rel",
+            "source_node_id": "node_ontology",
             "target_node_id": "node_relationships",
+            "data_mapping": {},
+            "edge_type": "default",
+        },
+        {
+            "id": "edge_rel_to_resolver",
+            "source_node_id": "node_relationships",
+            "target_node_id": "node_resolver",
             "data_mapping": {},
             "edge_type": "default",
         },
@@ -84,13 +91,6 @@ DEFAULT_PIPELINE = {
             "source_node_id": "node_ontology",
             "target_node_id": "node_resolver",
             "data_mapping": {"entities": "entities"},
-            "edge_type": "default",
-        },
-        {
-            "id": "edge_rel_to_resolver",
-            "source_node_id": "node_relationships",
-            "target_node_id": "node_resolver",
-            "data_mapping": {},
             "edge_type": "default",
         },
         {
@@ -105,21 +105,36 @@ DEFAULT_PIPELINE = {
 
 
 async def _seed_default_pipeline() -> None:
-    """Seed the default KG pipeline if no graphs exist yet."""
+    """Seed or update the default KG pipeline."""
     async with async_session() as db:
-        result = await db.execute(select(GraphDefinition).limit(1))
-        if result.scalars().first() is not None:
-            return  # Graphs already exist, skip seeding
-
-        graph = GraphDefinition(
-            name=DEFAULT_PIPELINE["name"],
-            description=DEFAULT_PIPELINE["description"],
-            nodes_json=DEFAULT_PIPELINE["nodes"],
-            edges_json=DEFAULT_PIPELINE["edges"],
+        # Check if the default pipeline already exists
+        result = await db.execute(
+            select(GraphDefinition).where(GraphDefinition.name == DEFAULT_PIPELINE["name"])
         )
-        db.add(graph)
-        await db.commit()
-        logger.info(f"Seeded default pipeline: '{graph.name}' (id={graph.id})")
+        existing = result.scalars().first()
+
+        if existing:
+            # Update the existing default pipeline with the latest edges/nodes
+            existing.nodes_json = DEFAULT_PIPELINE["nodes"]
+            existing.edges_json = DEFAULT_PIPELINE["edges"]
+            existing.description = DEFAULT_PIPELINE["description"]
+            await db.commit()
+            logger.info(f"Updated default pipeline: '{existing.name}' (id={existing.id})")
+        else:
+            # Check if any graph exists at all
+            result = await db.execute(select(GraphDefinition).limit(1))
+            if result.scalars().first() is not None:
+                return  # Other graphs exist, don't add default
+
+            graph = GraphDefinition(
+                name=DEFAULT_PIPELINE["name"],
+                description=DEFAULT_PIPELINE["description"],
+                nodes_json=DEFAULT_PIPELINE["nodes"],
+                edges_json=DEFAULT_PIPELINE["edges"],
+            )
+            db.add(graph)
+            await db.commit()
+            logger.info(f"Seeded default pipeline: '{graph.name}' (id={graph.id})")
 
 
 @asynccontextmanager
