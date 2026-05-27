@@ -39,54 +39,83 @@ export default function Home() {
     }
   }, [graphId, loadGraph, setGraphMeta]);
 
-  // Extract KG data from execution results
+  // Extract KG data from execution results — merge nodes from kg_builder + edges from relationships
   const kgData: KnowledgeGraph = (() => {
-    // Try shared state first (from run_complete event)
+    // Try shared state first
     const kg = sharedState?.knowledge_graph;
-    if (kg && (kg.nodes?.length > 0 || kg.edges?.length > 0)) {
+    if (kg && (kg.nodes?.length > 0) && (kg.edges?.length > 0)) {
       return kg as KnowledgeGraph;
     }
 
-    // Try extracting from node executions (kg_builder output)
+    // Collect best nodes and edges from all execution outputs
+    let bestNodes: any[] = [];
+    let bestEdges: any[] = [];
+    let relationships: any[] = [];
+
     for (const [, exec] of Object.entries(nodeExecutions)) {
       const output = exec?.output_data_json;
       if (!output) continue;
 
-      // Check graph_data.nodes (kg_builder nests output here)
-      if (output?.graph_data?.nodes?.length > 0) {
-        return {
-          nodes: output.graph_data.nodes,
-          edges: output.graph_data.edges || [],
-          stats: output.stats,
-        } as KnowledgeGraph;
+      // Collect nodes from kg_builder (graph_data.nodes) or ontology_extractor (entities)
+      if (output.graph_data?.nodes?.length > 0 && output.graph_data.nodes.length > bestNodes.length) {
+        bestNodes = output.graph_data.nodes;
+        if (output.graph_data.edges?.length > 0) {
+          bestEdges = output.graph_data.edges;
+        }
       }
-      // Check direct nodes/edges
-      if (output?.nodes?.length > 0) {
-        return { nodes: output.nodes, edges: output.edges || [] } as KnowledgeGraph;
+      if (output.nodes?.length > 0 && output.nodes.length > bestNodes.length) {
+        bestNodes = output.nodes;
+        if (output.edges?.length > 0) bestEdges = output.edges;
       }
-      if (output?.knowledge_graph?.nodes?.length > 0) {
-        return output.knowledge_graph as KnowledgeGraph;
+
+      // Collect relationships (from relationship_extractor or entity_resolver)
+      if (output.relationships?.length > 0 && output.relationships.length > relationships.length) {
+        relationships = output.relationships;
       }
-      // Build KG from entities + relationships
-      if (output?.entities?.length > 0 && output?.relationships?.length > 0) {
-        return {
-          nodes: output.entities.map((e: any) => ({
-            id: e.name || e.id,
-            label: e.name || e.id,
-            type: e.type || 'Entity',
-            description: e.description,
-          })),
-          edges: output.relationships.map((r: any) => ({
-            source: r.source,
-            target: r.target,
-            type: r.type || r.relationship_type || 'related',
-            confidence: r.confidence,
-          })),
-        };
+
+      // Collect entities as fallback nodes
+      if (output.entities?.length > 0 && bestNodes.length === 0) {
+        bestNodes = output.entities.map((e: any) => ({
+          id: (e.name || e.id || '').toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+          label: e.name || e.id || '',
+          type: e.type || 'Entity',
+          description: e.description,
+        }));
       }
     }
 
-    return { nodes: [], edges: [] };
+    // If we have nodes but no edges, convert relationships to edges
+    if (bestNodes.length > 0 && bestEdges.length === 0 && relationships.length > 0) {
+      // Build a lookup from label (lowercased) → node id
+      const labelToId: Record<string, string> = {};
+      bestNodes.forEach((n: any) => {
+        const id = n.id || '';
+        const label = (n.label || n.id || '').toLowerCase();
+        labelToId[label] = id;
+        // Also map the ID itself
+        labelToId[id.toLowerCase()] = id;
+      });
+
+      bestEdges = relationships.map((r: any) => {
+        const srcName = (r.source || '').toLowerCase();
+        const tgtName = (r.target || '').toLowerCase();
+        return {
+          source: labelToId[srcName] || srcName.replace(/[^a-z0-9]+/g, '_'),
+          target: labelToId[tgtName] || tgtName.replace(/[^a-z0-9]+/g, '_'),
+          type: r.type || 'related',
+          description: r.description || '',
+          confidence: r.confidence,
+        };
+      });
+    }
+
+    if (bestNodes.length === 0) return { nodes: [], edges: [] };
+
+    return {
+      nodes: bestNodes,
+      edges: bestEdges,
+      stats: { node_count: bestNodes.length, edge_count: bestEdges.length, connected_components: 0, entity_types: {}, relationship_types: {} },
+    } as KnowledgeGraph;
   })();
 
   if (activeTab === 'experiments') {
