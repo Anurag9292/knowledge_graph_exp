@@ -95,18 +95,24 @@ def _build_node_input_from_state(
     """
     Build the input data for a node from the LangGraph state.
     
-    This replicates the old compiler's build_node_input logic but reads
-    from the LangGraph state instead of a separate node_outputs dict.
+    All nodes receive the original document text (as 'text' and 'document_text')
+    so agents can always access the source material. Non-root nodes additionally
+    receive data from upstream nodes via edges.
     """
     input_data: dict[str, Any] = {}
 
+    # ALL nodes get document text — agents always need access to the source
+    doc = state.get("document", {})
+    if doc:
+        raw_text = doc.get("raw_text", "")
+        input_data["text"] = raw_text
+        input_data["document_text"] = raw_text
+        input_data["page_count"] = doc.get("metadata", {}).get("page_count", 1)
+
     if is_root:
-        # Root nodes get document data directly
-        doc = state.get("document", {})
+        # Root nodes additionally get pages, tables, figures
         if doc:
-            input_data["document_text"] = doc.get("raw_text", "")
             input_data["pages"] = doc.get("pages", [])
-            input_data["page_count"] = doc.get("metadata", {}).get("page_count", 1)
             if doc.get("tables"):
                 input_data["tables"] = doc["tables"]
             if doc.get("figures"):
