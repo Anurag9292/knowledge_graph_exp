@@ -77,21 +77,63 @@ async def _stream_execution(ws: WebSocket, run_id: str) -> None:
         # Send status updates based on engine state changes
         current_node_count = len(engine.node_results)
         if current_node_count > last_node_count:
-            # New node results available
+            # New node results available — send full execution data
             for i in range(last_node_count, current_node_count):
                 result = engine.node_results[i]
+
+                # Send node_start event
                 await ws.send_text(json.dumps({
-                    "event_type": "node_complete",
+                    "event_type": "node_start",
                     "node_id": result.node_id,
                     "data": {
                         "agent_type": result.agent_type,
-                        "status": result.status,
-                        "tokens_used": result.tokens_used,
-                        "duration_ms": result.duration_ms,
-                        "error": result.error,
+                        "system_prompt": result.system_prompt,
                     },
                     "timestamp": time.time(),
                 }))
+
+                # Send node_input event
+                await ws.send_text(json.dumps({
+                    "event_type": "node_input",
+                    "node_id": result.node_id,
+                    "data": {
+                        "input": result.input_data,
+                        "memory_before": result.memory_before,
+                    },
+                    "timestamp": time.time(),
+                }))
+
+                # Send node_complete or node_error event with FULL data
+                if result.status == "completed":
+                    await ws.send_text(json.dumps({
+                        "event_type": "node_complete",
+                        "node_id": result.node_id,
+                        "data": {
+                            "agent_type": result.agent_type,
+                            "status": result.status,
+                            "output": result.output_data,
+                            "memory_after": result.memory_after,
+                            "logs": result.logs,
+                            "tool_calls": result.tool_calls,
+                            "tokens_used": result.tokens_used,
+                            "duration_ms": result.duration_ms,
+                        },
+                        "timestamp": time.time(),
+                    }))
+                else:
+                    await ws.send_text(json.dumps({
+                        "event_type": "node_error",
+                        "node_id": result.node_id,
+                        "data": {
+                            "agent_type": result.agent_type,
+                            "status": result.status,
+                            "error": result.error,
+                            "logs": result.logs,
+                            "duration_ms": result.duration_ms,
+                        },
+                        "timestamp": time.time(),
+                    }))
+
             last_node_count = current_node_count
 
         await asyncio.sleep(0.1)
