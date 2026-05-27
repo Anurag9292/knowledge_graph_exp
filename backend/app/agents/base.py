@@ -292,9 +292,25 @@ class BaseAgent(ABC):
         if self.memory.config.sharing in (MemorySharing.READ_SHARED, MemorySharing.FULL_ACCESS):
             shared = agent_input.shared_state
             if shared:
-                parts.append("\n## Context from Other Agents (Shared State):")
-                for key, value in shared.items():
-                    if key != "document":  # Don't dump the full document
+                # Only inject semantically relevant state fields into prompts.
+                # Exclude internal/accumulated state that would overwhelm the LLM.
+                _EXCLUDED_STATE_KEYS = {
+                    "document",          # Too large (full document text)
+                    "agent_outputs",     # Internal: per-node output accumulator
+                    "agent_memories",    # Internal: per-node memory snapshots
+                    "execution_log",     # Internal: execution trace (very large)
+                    "domain_schema",     # Internal: schema config (passed via edges when needed)
+                    "grand_schema",      # Internal: schema export output
+                    "experiment_memory", # Handled separately below
+                    "visual_results",    # Large binary/encoded data
+                }
+                relevant_state = {
+                    k: v for k, v in shared.items()
+                    if k not in _EXCLUDED_STATE_KEYS and v  # skip excluded and empty values
+                }
+                if relevant_state:
+                    parts.append("\n## Context from Other Agents (Shared State):")
+                    for key, value in relevant_state.items():
                         val_str = str(value)
                         if len(val_str) > 1000:
                             val_str = val_str[:1000] + "..."
