@@ -60,7 +60,7 @@ IMPORTANT:
 - Be conservative — only add types that will clearly be useful
 - Return ONLY valid JSON, no markdown formatting"""
 
-    default_model: str = "gpt-4o"
+    default_model: str = "gpt-4.1-mini"
     default_temperature: float = 0.2
 
     async def process(self, agent_input: AgentInput) -> AgentOutput:

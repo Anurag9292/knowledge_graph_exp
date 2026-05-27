@@ -104,12 +104,14 @@ export function NodeInspector() {
               <div>
                 <label className="text-xs font-medium text-gray-600">Model</label>
                 <select
-                  value={config.model || agentType?.default_model || 'gpt-4o'}
+                  value={config.model || agentType?.default_model || 'gpt-4.1-mini'}
                   onChange={(e) => updateNodeConfig(selectedNodeId, { model: e.target.value })}
                   className="mt-1 w-full text-xs border border-gray-300 rounded-md p-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
                 >
+                  <option value="gpt-4.1-mini">gpt-4.1-mini</option>
                   <option value="gpt-4o">gpt-4o</option>
                   <option value="gpt-4o-mini">gpt-4o-mini</option>
+                  <option value="gpt-4.1">gpt-4.1</option>
                   <option value="gpt-4-turbo">gpt-4-turbo</option>
                 </select>
               </div>

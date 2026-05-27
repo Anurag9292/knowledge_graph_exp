@@ -48,7 +48,7 @@ Guidelines:
 - Maintain objectivity — don't add interpretation beyond what's in the text
 - Preserve important numbers, names, and dates"""
 
-    default_model: str = "gpt-4o"
+    default_model: str = "gpt-4.1-mini"
     default_temperature: float = 0.3
 
     async def process(self, agent_input: AgentInput) -> AgentOutput:

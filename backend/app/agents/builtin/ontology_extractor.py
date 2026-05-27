@@ -51,7 +51,7 @@ Guidelines:
 - If document structure is provided, use it to better understand the document's organization
 - Aim for a clean, reusable ontology that captures the domain well"""
 
-    default_model: str = "gpt-4o"
+    default_model: str = "gpt-4.1-mini"
     default_temperature: float = 0.2
 
     def _extract_text_from_structure(self, document_structure: dict) -> str:
