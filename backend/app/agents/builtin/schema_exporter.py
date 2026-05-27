@@ -62,6 +62,19 @@ class SchemaExporterAgent(BaseAgent):
         # Ontology data from shared state
         ontology = shared_state.get("ontology", {})
 
+        # ─── Debug: log available data keys for troubleshooting
+        data_keys = list(agent_input.data.keys())
+        state_keys = list(shared_state.keys()) if shared_state else []
+        self.log(f"Available data keys: {data_keys}")
+        self.log(f"Available shared_state keys: {state_keys}")
+        if "knowledge_graph" in shared_state:
+            kg_val = shared_state["knowledge_graph"]
+            kg_keys = list(kg_val.keys()) if isinstance(kg_val, dict) else type(kg_val).__name__
+            self.log(f"knowledge_graph contents: keys={kg_keys}")
+        if "agent_outputs" in shared_state:
+            ao_keys = list(shared_state["agent_outputs"].keys()) if isinstance(shared_state.get("agent_outputs"), dict) else "not-a-dict"
+            self.log(f"agent_outputs node keys: {ao_keys}")
+
         # ─── KG data: try multiple sources (edge data, shared state, agent_outputs)
 
         nodes: list = []
