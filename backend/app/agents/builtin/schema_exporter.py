@@ -143,17 +143,43 @@ class SchemaExporterAgent(BaseAgent):
                         self.log(f"KG data loaded from agent_outputs['{node_key}'] ({len(nodes)} nodes)")
                         break
 
-        # Source 5: Reconstruct from accumulated entities + relationships in shared state
-        # These are populated by ontology_extractor and relationship_extractor via extend_list reducers
+        # Source 5: Reconstruct from entities + relationships found in shared state
+        # Entities may be in multiple locations depending on how agents wrote them
         if not nodes:
+            # Try multiple entity sources
             accumulated_entities = shared_state.get("entities", [])
+            
+            # Fallback: ontology_extractor writes entities inside the "ontology" dict
+            if not accumulated_entities:
+                ontology_data = shared_state.get("ontology", {})
+                if isinstance(ontology_data, dict):
+                    accumulated_entities = ontology_data.get("entities", [])
+            
+            # Fallback: read directly from ontology_extractor's agent_outputs
+            if not accumulated_entities:
+                all_outputs = shared_state.get("agent_outputs", {})
+                if isinstance(all_outputs, dict):
+                    for node_key in ("node_ontology", "node_resolver"):
+                        node_out = all_outputs.get(node_key, {})
+                        if isinstance(node_out, dict):
+                            ents = node_out.get("entities", node_out.get("resolved_entities", []))
+                            if isinstance(ents, list) and ents:
+                                accumulated_entities = ents
+                                break
+
+            # Get relationships
             accumulated_relationships = shared_state.get("relationships", [])
+            
             if isinstance(accumulated_entities, list) and accumulated_entities:
                 # Convert entities to node format
                 nodes = []
+                seen_ids = set()
                 for entity in accumulated_entities:
                     if isinstance(entity, dict) and entity.get("name"):
                         node_id = entity["name"].lower().replace(" ", "_")
+                        if node_id in seen_ids:
+                            continue
+                        seen_ids.add(node_id)
                         nodes.append({
                             "id": node_id,
                             "label": entity["name"],
