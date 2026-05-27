@@ -26,12 +26,13 @@ export default function Home() {
     }
   }, [agentTypesLoaded, setAgentTypes]);
 
-  // Auto-load the default graph if canvas is empty
+  // Auto-load the default pipeline if canvas is empty
   useEffect(() => {
     if (!graphId) {
       graphsApi.list().then((graphs) => {
         if (graphs.length > 0) {
-          const defaultGraph = graphs[0];
+          // Prefer the "Knowledge Graph Pipeline" if it exists
+          const defaultGraph = graphs.find((g: any) => g.name === 'Knowledge Graph Pipeline') || graphs[0];
           loadGraph(defaultGraph.nodes_json || [], defaultGraph.edges_json || []);
           setGraphMeta(defaultGraph.id, defaultGraph.name, defaultGraph.description || '');
         }
