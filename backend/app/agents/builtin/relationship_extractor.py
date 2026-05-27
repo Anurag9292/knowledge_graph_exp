@@ -144,7 +144,10 @@ IMPORTANT: You must find at least one relationship if two or more entities are p
             )
 
             return AgentOutput(
-                data={"relationships": relationships},
+                data={
+                    "relationships": relationships,
+                    "entities": entities,  # Pass through for downstream nodes
+                },
                 memory_updates={"relationships": relationships},
                 shared_state_writes={"relationships": relationships},
                 logs=self.logs,
