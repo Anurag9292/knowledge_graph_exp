@@ -126,7 +126,7 @@ DEFAULT_PIPELINE = {
 
 
 async def _seed_default_pipeline() -> None:
-    """Seed or update the default KG pipeline."""
+    """Always ensure the default KG pipeline exists and is up to date."""
     async with async_session() as db:
         # Check if the default pipeline already exists
         result = await db.execute(
@@ -135,18 +135,14 @@ async def _seed_default_pipeline() -> None:
         existing = result.scalars().first()
 
         if existing:
-            # Update the existing default pipeline with the latest edges/nodes
+            # Update the existing default pipeline with the latest nodes/edges
             existing.nodes_json = DEFAULT_PIPELINE["nodes"]
             existing.edges_json = DEFAULT_PIPELINE["edges"]
             existing.description = DEFAULT_PIPELINE["description"]
             await db.commit()
             logger.info(f"Updated default pipeline: '{existing.name}' (id={existing.id})")
         else:
-            # Check if any graph exists at all
-            result = await db.execute(select(GraphDefinition).limit(1))
-            if result.scalars().first() is not None:
-                return  # Other graphs exist, don't add default
-
+            # Always create the default pipeline (even if other graphs exist)
             graph = GraphDefinition(
                 name=DEFAULT_PIPELINE["name"],
                 description=DEFAULT_PIPELINE["description"],
