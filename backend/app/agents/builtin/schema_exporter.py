@@ -51,19 +51,7 @@ class SchemaExporterAgent(BaseAgent):
 
         # ─── Collect inputs from upstream agents ──────────────────────────────
 
-        # KG data from kg_builder
-        graph_data = agent_input.data.get("graph_data", {})
-        nodes = graph_data.get("nodes", [])
-        edges = graph_data.get("edges", [])
-        stats = agent_input.data.get("stats", {})
-
-        # If graph_data is nested inside the input differently, try alternatives
-        if not nodes:
-            nodes = agent_input.data.get("nodes", [])
-        if not edges:
-            edges = agent_input.data.get("edges", [])
-
-        # Domain schema from shared state (written by schema_architect or domain_config)
+        # Domain schema and shared state (available early for logging)
         shared_state = agent_input.shared_state or {}
         domain_schema = shared_state.get("domain_schema", {})
 
@@ -73,6 +61,59 @@ class SchemaExporterAgent(BaseAgent):
 
         # Ontology data from shared state
         ontology = shared_state.get("ontology", {})
+
+        # ─── KG data: try multiple sources (edge data, shared state, agent_outputs)
+
+        nodes: list = []
+        edges: list = []
+        stats: dict = {}
+
+        # Source 1: Direct edge data from kg_builder (agent_input.data)
+        graph_data = agent_input.data.get("graph_data", {})
+        if isinstance(graph_data, dict):
+            nodes = graph_data.get("nodes", [])
+            edges = graph_data.get("edges", [])
+        stats = agent_input.data.get("stats", {})
+
+        # Source 2: Top-level nodes/edges in input data
+        if not nodes:
+            nodes = agent_input.data.get("nodes", [])
+        if not edges:
+            edges = agent_input.data.get("edges", [])
+
+        # Source 3: shared state "knowledge_graph" field (written by kg_builder via shared_state_writes)
+        if not nodes:
+            kg_state = shared_state.get("knowledge_graph", {})
+            if isinstance(kg_state, dict):
+                # kg_builder writes: shared_state_writes={"knowledge_graph": graph_data}
+                # where graph_data = {"graph_data": {"nodes": [...], "edges": [...]}, "stats": {...}}
+                kg_graph_data = kg_state.get("graph_data", {})
+                if isinstance(kg_graph_data, dict) and kg_graph_data.get("nodes"):
+                    nodes = kg_graph_data.get("nodes", [])
+                    edges = kg_graph_data.get("edges", [])
+                    stats = kg_state.get("stats", stats)
+                    self.log(f"KG data loaded from shared state 'knowledge_graph' field ({len(nodes)} nodes)")
+                # Also handle case where nodes are directly in knowledge_graph (not nested)
+                elif kg_state.get("nodes"):
+                    nodes = kg_state.get("nodes", [])
+                    edges = kg_state.get("edges", [])
+                    self.log(f"KG data loaded from shared state 'knowledge_graph' (flat) ({len(nodes)} nodes)")
+
+        # Source 4: Scan agent_outputs in shared state for any output containing graph_data
+        if not nodes:
+            all_outputs = shared_state.get("agent_outputs", {})
+            if isinstance(all_outputs, dict):
+                for node_key, node_output in all_outputs.items():
+                    if not isinstance(node_output, dict):
+                        continue
+                    # Look for graph_data with nodes
+                    gd = node_output.get("graph_data", {})
+                    if isinstance(gd, dict) and gd.get("nodes"):
+                        nodes = gd["nodes"]
+                        edges = gd.get("edges", [])
+                        stats = node_output.get("stats", stats)
+                        self.log(f"KG data loaded from agent_outputs['{node_key}'] ({len(nodes)} nodes)")
+                        break
 
         self.log(
             f"Inputs collected: {len(nodes)} nodes, {len(edges)} edges, "
