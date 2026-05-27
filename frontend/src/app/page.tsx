@@ -50,11 +50,25 @@ export default function Home() {
     // Try extracting from node executions (kg_builder output)
     for (const [, exec] of Object.entries(nodeExecutions)) {
       const output = exec?.output_data_json;
-      if (output?.knowledge_graph) {
+      if (!output) continue;
+
+      // Check graph_data.nodes (kg_builder nests output here)
+      if (output?.graph_data?.nodes?.length > 0) {
+        return {
+          nodes: output.graph_data.nodes,
+          edges: output.graph_data.edges || [],
+          stats: output.stats,
+        } as KnowledgeGraph;
+      }
+      // Check direct nodes/edges
+      if (output?.nodes?.length > 0) {
+        return { nodes: output.nodes, edges: output.edges || [] } as KnowledgeGraph;
+      }
+      if (output?.knowledge_graph?.nodes?.length > 0) {
         return output.knowledge_graph as KnowledgeGraph;
       }
-      // Also check for entities + relationships that can form a KG
-      if (output?.entities && output?.relationships) {
+      // Build KG from entities + relationships
+      if (output?.entities?.length > 0 && output?.relationships?.length > 0) {
         return {
           nodes: output.entities.map((e: any) => ({
             id: e.name || e.id,
