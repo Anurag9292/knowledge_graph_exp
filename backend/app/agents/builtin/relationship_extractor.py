@@ -58,7 +58,7 @@ Guidelines:
 
 IMPORTANT: You must find at least one relationship if two or more entities are present in the text. Entities appearing together in a sentence are always related."""
 
-    default_model: str = "gpt-4o"
+    default_model: str = "gpt-4.1-mini"
     default_temperature: float = 0.2
 
     async def process(self, agent_input: AgentInput) -> AgentOutput:

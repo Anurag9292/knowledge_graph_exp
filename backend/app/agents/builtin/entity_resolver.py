@@ -59,7 +59,7 @@ Guidelines:
 - Preserve all information from merged entities in the description
 - Include the source indices from the original list for traceability"""
 
-    default_model: str = "gpt-4o"
+    default_model: str = "gpt-4.1-mini"
     default_temperature: float = 0.1
 
     async def process(self, agent_input: AgentInput) -> AgentOutput:

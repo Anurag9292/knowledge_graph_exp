@@ -59,7 +59,7 @@ Identify figure references like "Figure 1", "Fig.", "[image]", etc.
 
 Be thorough and precise. If no page information is available, use null for page numbers."""
 
-    default_model: str = "gpt-4o"
+    default_model: str = "gpt-4.1-mini"
     default_temperature: float = 0.1
 
     async def process(self, agent_input: AgentInput) -> AgentOutput:

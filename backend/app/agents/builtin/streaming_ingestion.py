@@ -58,7 +58,7 @@ You MUST output valid JSON for each chunk:
 
 Be thorough but avoid repetition with what you've already accumulated."""
 
-    default_model: str = "gpt-4o"
+    default_model: str = "gpt-4.1-mini"
     default_temperature: float = 0.2
     default_max_tokens: int = 4096
 

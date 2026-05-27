@@ -50,7 +50,7 @@ CRITICAL RULES:
 
 IMPORTANT: If you receive N relationships, you must output N edges. Never return "edges": []."""
 
-    default_model: str = "gpt-4o"
+    default_model: str = "gpt-4.1-mini"
     default_temperature: float = 0.1
 
     async def process(self, agent_input: AgentInput) -> AgentOutput:
