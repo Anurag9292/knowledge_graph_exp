@@ -97,7 +97,7 @@ def _build_node_input_from_state(
     
     All nodes receive the original document text (as 'text' and 'document_text')
     so agents can always access the source material. Non-root nodes additionally
-    receive data from upstream nodes via edges.
+    receive data from upstream nodes via edges AND key shared state fields.
     """
     input_data: dict[str, Any] = {}
 
@@ -130,7 +130,40 @@ def _build_node_input_from_state(
                 # No explicit mapping — pass all source outputs
                 input_data.update(source_output)
 
+        # Also inject key shared state fields that agents commonly need.
+        # This ensures data is available even if edge-based propagation
+        # doesn't deliver it (e.g., due to LangGraph state timing).
+        _inject_shared_state_fields(state, input_data)
+
     return input_data
+
+
+def _inject_shared_state_fields(state: GraphState, input_data: dict[str, Any]) -> None:
+    """
+    Inject important shared state fields into input_data if not already present.
+    
+    This acts as a safety net: if the edge-based data flow doesn't deliver
+    key fields (like knowledge_graph from kg_builder), they can still be
+    accessed from the shared state directly.
+    """
+    # Inject knowledge_graph if not already in input_data
+    if "graph_data" not in input_data:
+        kg = state.get("knowledge_graph", {})
+        if isinstance(kg, dict):
+            # Handle nested structure: {"graph_data": {"nodes": [...], ...}, "stats": {...}}
+            if kg.get("graph_data") and isinstance(kg["graph_data"], dict):
+                input_data["graph_data"] = kg["graph_data"]
+                if "stats" not in input_data:
+                    input_data["stats"] = kg.get("stats", {})
+            # Handle flat structure: {"nodes": [...], "edges": [...]}
+            elif kg.get("nodes") and isinstance(kg["nodes"], list) and len(kg["nodes"]) > 0:
+                input_data["graph_data"] = {"nodes": kg["nodes"], "edges": kg.get("edges", [])}
+
+    # Inject domain_schema if not already in input_data
+    if "schema" not in input_data:
+        domain_schema = state.get("domain_schema", {})
+        if isinstance(domain_schema, dict) and domain_schema:
+            input_data["schema"] = domain_schema
 
 
 def _make_node_function(
