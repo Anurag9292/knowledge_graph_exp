@@ -177,6 +177,13 @@ def _make_node_function(
         try:
             output: AgentOutput = await agent.process(agent_input)
 
+            # Extract token usage from output data (injected by LLMService)
+            tokens = output.tokens_used
+            if not tokens and isinstance(output.data, dict):
+                usage = output.data.pop("_usage", None)
+                if usage and isinstance(usage, dict):
+                    tokens = usage.get("total_tokens", 0)
+
             # Apply memory updates to agent's local memory
             for key, value in output.memory_updates.items():
                 agent.memory.set(key, value)
@@ -223,12 +230,17 @@ def _make_node_function(
                 state_updates["flags"] = output.flags
 
             # Log execution
+            tokens = output.tokens_used
+            tok_per_sec = round(tokens / (duration_ms / 1000), 1) if duration_ms > 0 and tokens > 0 else 0
+
             state_updates["execution_log"] = [
                 {
                     "node_id": node_id,
                     "agent_type": node_def.agent_type,
                     "status": "completed",
                     "duration_ms": duration_ms,
+                    "tokens_used": tokens,
+                    "tok_per_sec": tok_per_sec,
                     "input_data": input_data,
                     "output_data": output.data,
                     "memory_before": memory_before,

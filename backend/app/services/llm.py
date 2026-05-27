@@ -122,7 +122,10 @@ class LLMService:
         temperature: float = 0.2,
         max_tokens: int = 4096,
     ) -> dict[str, Any]:
-        """Get structured JSON output from the LLM."""
+        """Get structured JSON output from the LLM.
+        
+        Returns the parsed JSON dict with an added '_usage' key containing token counts.
+        """
         result = await self.chat(
             messages=messages,
             model=model,
@@ -131,10 +134,16 @@ class LLMService:
             response_format={"type": "json_object"},
         )
         
+        usage = result.get("usage", {})
+        
         try:
-            return json.loads(result["content"])
+            parsed = json.loads(result["content"])
         except (json.JSONDecodeError, TypeError):
-            return {"raw": result["content"]}
+            parsed = {"raw": result["content"]}
+        
+        # Attach usage metadata (agents can read this)
+        parsed["_usage"] = usage
+        return parsed
 
 
 # Singleton instance
