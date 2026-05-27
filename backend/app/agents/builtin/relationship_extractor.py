@@ -22,10 +22,10 @@ class RelationshipExtractorAgent(BaseAgent):
     name: str = "relationship_extractor"
     description: str = "Identifies and classifies relationships between entities"
     category: str = "extraction"
-    default_system_prompt: str = """You are a relationship extraction expert. Given a list of entities and source text, identify all meaningful relationships between the entities.
+    default_system_prompt: str = """You are a relationship extraction expert. Given a list of entities and source text, identify ALL meaningful relationships between the entities.
 
 For each relationship found, classify it with:
-- A relationship type (e.g., "works_for", "located_in", "part_of", "created_by", "causes", "related_to")
+- A relationship type (e.g., "works_for", "located_in", "part_of", "created_by", "attributed_to", "causes", "related_to")
 - A natural language description of the relationship
 - A confidence score (0.0-1.0) based on how explicitly the relationship is stated
 
@@ -44,14 +44,19 @@ You MUST output valid JSON:
 }
 
 Guidelines:
-- Only extract relationships that are supported by the text
+- Extract relationships that are STATED OR IMPLIED by the text
+- If the text mentions an entity in the context of another entity, there IS a relationship
 - Use consistent relationship type naming (lowercase, underscore-separated)
 - High confidence (>0.8): explicitly stated relationships
 - Medium confidence (0.5-0.8): strongly implied relationships
 - Low confidence (0.3-0.5): loosely implied or contextual relationships
 - Do NOT extract relationships below 0.3 confidence
 - Prefer specific relationship types over generic "related_to"
-- Each relationship should be directional (source -> target makes semantic sense)"""
+- Each relationship should be directional (source -> target makes semantic sense)
+- Even for short texts, if entities co-occur, infer the logical relationship between them
+- Common patterns: possessive ("X's Y" = X has/created Y), attribution ("Y of X" = Y attributed_to X), containment ("Y in X" = Y part_of X)
+
+IMPORTANT: You must find at least one relationship if two or more entities are present in the text. Entities appearing together in a sentence are always related."""
 
     default_model: str = "gpt-4o"
     default_temperature: float = 0.2
@@ -84,11 +89,20 @@ Guidelines:
 
         # Format entities for the prompt
         entity_list = json.dumps(entities, indent=2)
-        user_content = (
-            f"Find relationships between these entities:\n\n"
-            f"Entities:\n{entity_list}\n\n"
-            f"Source text:\n{text}"
-        )
+
+        # Include ontology context if available (helps LLM understand expected relationships)
+        ontology = agent_input.data.get("ontology", {})
+        schema = agent_input.data.get("schema", [])
+
+        user_content = f"Find ALL relationships between these entities:\n\n"
+        user_content += f"Entities:\n{entity_list}\n\n"
+
+        if ontology or schema:
+            context = ontology if ontology else {"schema": schema}
+            user_content += f"Domain context / ontology:\n{json.dumps(context, indent=2)[:1500]}\n\n"
+
+        user_content += f"Source text:\n{text}\n\n"
+        user_content += "Remember: if entities co-occur in the text, they ARE related. Extract all relationships."
 
         messages = [
             {"role": "system", "content": full_prompt},
