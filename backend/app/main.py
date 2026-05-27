@@ -87,13 +87,6 @@ DEFAULT_PIPELINE = {
             "edge_type": "default",
         },
         {
-            "id": "edge_ontology_to_resolver",
-            "source_node_id": "node_ontology",
-            "target_node_id": "node_resolver",
-            "data_mapping": {"entities": "entities"},
-            "edge_type": "default",
-        },
-        {
             "id": "edge_resolver_to_kg",
             "source_node_id": "node_resolver",
             "target_node_id": "node_kg",

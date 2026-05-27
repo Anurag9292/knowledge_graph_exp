@@ -114,9 +114,26 @@ Guidelines:
                 f"({len(merges)} merges)"
             )
 
+            # Build entities list for downstream (kg_builder expects 'entities')
+            # Use resolved canonical names as the entity list
+            output_entities = [
+                {
+                    "name": re.get("canonical_name", re.get("name", "")),
+                    "type": re.get("type", "Unknown"),
+                    "description": re.get("description", ""),
+                    "aliases": re.get("aliases", []),
+                }
+                for re in resolved_entities
+            ]
+
+            # Pass through relationships from input for downstream nodes
+            relationships = agent_input.data.get("relationships", [])
+
             return AgentOutput(
                 data={
                     "resolved_entities": resolved_entities,
+                    "entities": output_entities,  # For kg_builder
+                    "relationships": relationships,  # Pass through for kg_builder
                     "merges": merges,
                 },
                 memory_updates={"resolved_entities": resolved_entities, "merges": merges},
