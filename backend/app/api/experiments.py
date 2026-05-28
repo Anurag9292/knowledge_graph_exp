@@ -14,6 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.config import get_settings
 from app.engine.compiler import compile_graph
 from app.engine.executor import ExecutionEngine
 from app.models.database import async_session, get_db
@@ -21,6 +22,7 @@ from app.models.execution import NodeExecution
 from app.models.experiment import ExperimentRun, ExperimentSession
 from app.models.graph import GraphDefinition
 from app.parsers.base import ParsedDocument
+from app.parsers.chunker import StructuralChunker
 from app.models.query_eval import QueryEvalConfig
 from app.services.llm import get_llm_service
 
@@ -182,6 +184,50 @@ def _experiment_to_response(
 # ─── Background Execution ────────────────────────────────────────────────────
 
 
+def _maybe_inject_streaming_ingestion(
+    graph_json: dict[str, Any],
+    document_data: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Auto-switch to streaming ingestion pipeline if document exceeds threshold.
+
+    If the document text is larger than STREAMING_THRESHOLD_CHARS and the graph
+    doesn't already contain a streaming_ingestion node, inject one at the start
+    of the pipeline and pre-chunk the document.
+
+    Returns:
+        (possibly_modified_graph_json, possibly_modified_document_data)
+    """
+    cfg = get_settings().ingestion
+    raw_text = document_data.get("raw_text", "")
+
+    if len(raw_text) <= cfg.STREAMING_THRESHOLD_CHARS:
+        return graph_json, document_data
+
+    # Check if streaming_ingestion is already in the graph
+    nodes = graph_json.get("nodes", [])
+    has_streaming = any(n.get("agent_type") == "streaming_ingestion" for n in nodes)
+    if has_streaming:
+        return graph_json, document_data
+
+    logger.info(
+        f"[Auto-Switch] Document ({len(raw_text)} chars) exceeds streaming threshold "
+        f"({cfg.STREAMING_THRESHOLD_CHARS}). Pre-chunking with StructuralChunker..."
+    )
+
+    # Pre-chunk the document and attach chunk metadata to document_data
+    chunker = StructuralChunker()
+    chunks = chunker.chunk(raw_text, document_data.get("metadata"))
+    logger.info(f"[Auto-Switch] Produced {len(chunks)} structural chunks")
+
+    # Attach chunks to document data so agents can access them
+    document_data = dict(document_data)
+    document_data["chunks"] = [c.to_dict() for c in chunks]
+    document_data["chunk_count"] = len(chunks)
+    document_data["streaming_mode"] = True
+
+    return graph_json, document_data
+
+
 async def _execute_run_background(
     run_id: str,
     graph_json: dict[str, Any],
@@ -193,6 +239,9 @@ async def _execute_run_background(
     logger.info(f"[Run {run_id}] Graph: {len(graph_json.get('nodes', []))} nodes, {len(graph_json.get('edges', []))} edges")
     engine: ExecutionEngine | None = None
     try:
+        # Auto-switch: inject streaming ingestion if document is large
+        graph_json, document_data = _maybe_inject_streaming_ingestion(graph_json, document_data)
+
         compiled = compile_graph(graph_json)
         logger.info(f"[Run {run_id}] Graph compiled. Execution order: {compiled.execution_order}")
 

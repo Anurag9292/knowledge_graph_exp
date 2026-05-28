@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { StreamEvent, NodeExecution, ExperimentRun } from '@/types';
 import { executionWs } from '@/lib/websocket';
+import { useChunkStore } from '@/stores/chunkStore';
 
 type NodeStatus = 'idle' | 'pending' | 'running' | 'completed' | 'failed';
 
@@ -155,6 +156,22 @@ export const useExecutionStore = create<ExecutionState>((set, get) => ({
           newState.isRunning = false;
           newState.sharedState = event.data.shared_state || {};
           executionWs.disconnect();
+          break;
+
+        // ─── Chunk-level events (streaming ingestion) ───────────────
+        case 'chunk_start' as any:
+          useChunkStore.getState().setActiveChunk(event.data.chunk_index);
+          useChunkStore.getState().setChunkStatus(event.data.chunk_index, 'processing');
+          break;
+
+        case 'chunk_complete' as any:
+          useChunkStore.getState().addChunkResult(event.data as any);
+          useChunkStore.getState().setActiveChunk(null);
+          break;
+
+        case 'chunk_error' as any:
+          useChunkStore.getState().setChunkStatus(event.data.chunk_index, 'error');
+          useChunkStore.getState().setActiveChunk(null);
           break;
 
         case 'run_cancelled':

@@ -32,26 +32,43 @@ class ParsedDocument:
         }
     
     def get_text_chunks(self, chunk_size: int = 2000, overlap: int = 200) -> list[str]:
-        """Split the raw text into chunks for streaming ingestion."""
+        """Split the raw text into chunks using the structural chunker.
+        
+        This method now delegates to the StructuralChunker for intelligent
+        boundary detection. Falls back to basic splitting if the chunker
+        is unavailable.
+        """
+        try:
+            from app.parsers.chunker import chunk_document
+            chunk_results = chunk_document(self.raw_text)
+            return [c.text for c in chunk_results]
+        except Exception:
+            # Fallback: basic character-based chunking
+            return self._basic_chunk(chunk_size, overlap)
+
+    def get_structural_chunks(self) -> list[Any]:
+        """Get full ChunkResult objects with metadata (for streaming ingestion)."""
+        from app.parsers.chunker import chunk_document
+        return chunk_document(self.raw_text, self.metadata)
+
+    def _basic_chunk(self, chunk_size: int = 2000, overlap: int = 200) -> list[str]:
+        """Fallback basic chunking by character count with sentence boundaries."""
         text = self.raw_text
         chunks = []
         start = 0
         while start < len(text):
             end = start + chunk_size
-            # Try to break at a paragraph or sentence boundary
             if end < len(text):
-                # Look for paragraph break
                 para_break = text.rfind("\n\n", start, end)
                 if para_break > start + chunk_size // 2:
                     end = para_break + 2
                 else:
-                    # Look for sentence break
                     sent_break = text.rfind(". ", start, end)
                     if sent_break > start + chunk_size // 2:
                         end = sent_break + 2
             chunks.append(text[start:end].strip())
             start = end - overlap
-        return [c for c in chunks if c]  # Filter empty chunks
+        return [c for c in chunks if c]
 
 
 class BaseParser(ABC):

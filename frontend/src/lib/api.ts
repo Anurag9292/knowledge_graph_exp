@@ -57,6 +57,7 @@ export const documentsApi = {
   },
   parseText: (text: string) => request<any>('/api/documents/parse-text', { method: 'POST', body: JSON.stringify({ text }) }),
   formats: () => request<any[]>('/api/documents/formats'),
+  chunkPreview: (text: string) => request<any>('/api/documents/chunk-preview', { method: 'POST', body: JSON.stringify({ text }) }),
 };
 
 // Evals
