@@ -18,6 +18,7 @@ export function EvalDashboard() {
   } = useEvalStore();
 
   const [completedRuns, setCompletedRuns] = useState<{id: string; label: string}[]>([]);
+  const [editingConfig, setEditingConfig] = useState<any>(null);
   const [selectedIngestionRun, setSelectedIngestionRun] = useState('');
   const [polling, setPolling] = useState<string | null>(null);
 
@@ -102,14 +103,19 @@ export function EvalDashboard() {
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Test Suites</h3>
               <button
-                onClick={() => setShowConfigEditor(true)}
+                onClick={() => { setEditingConfig(null); setShowConfigEditor(true); }}
                 className="text-blue-600 hover:text-blue-800"
               >
                 <Plus size={14} />
               </button>
             </div>
 
-            {showConfigEditor && <QueryConfigEditor />}
+            {showConfigEditor && (
+              <QueryConfigEditor
+                editConfig={editingConfig}
+                onClose={() => { setShowConfigEditor(false); setEditingConfig(null); }}
+              />
+            )}
 
             <div className="space-y-1 mt-2">
               {configs.map((config) => (
@@ -124,12 +130,22 @@ export function EvalDashboard() {
                     <div className="text-sm text-gray-700 truncate">{config.name}</div>
                     <div className="text-xs text-gray-400">{config.query_count} queries</div>
                   </div>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); deleteConfig(config.id); }}
-                    className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100"
-                  >
-                    <Trash2 size={12} />
-                  </button>
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setEditingConfig(config); setShowConfigEditor(true); }}
+                      className="text-gray-300 hover:text-blue-500"
+                      title="Edit"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); deleteConfig(config.id); }}
+                      className="text-gray-300 hover:text-red-500"
+                      title="Delete"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
                 </div>
               ))}
               {configs.length === 0 && !showConfigEditor && (

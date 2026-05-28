@@ -1,19 +1,40 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Trash2, Save, X } from 'lucide-react';
 import { useEvalStore } from '@/stores/evalStore';
+import { QueryEvalConfig } from '@/types';
+import { queryEvalApi } from '@/lib/api';
 
 interface QueryRow {
   question: string;
   ground_truth: string;
 }
 
-export function QueryConfigEditor() {
-  const { createConfig, setShowConfigEditor } = useEvalStore();
+interface QueryConfigEditorProps {
+  editConfig?: QueryEvalConfig | null;
+  onClose: () => void;
+}
+
+export function QueryConfigEditor({ editConfig, onClose }: QueryConfigEditorProps) {
+  const { fetchConfigs } = useEvalStore();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [queries, setQueries] = useState<QueryRow[]>([{ question: '', ground_truth: '' }]);
+  const [saving, setSaving] = useState(false);
+
+  // Pre-fill when editing
+  useEffect(() => {
+    if (editConfig) {
+      setName(editConfig.name);
+      setDescription(editConfig.description || '');
+      const existingQueries = (editConfig.queries_json || []).map((q: any) => ({
+        question: q.question || '',
+        ground_truth: q.ground_truth || '',
+      }));
+      setQueries(existingQueries.length > 0 ? existingQueries : [{ question: '', ground_truth: '' }]);
+    }
+  }, [editConfig]);
 
   const addQuery = () => setQueries([...queries, { question: '', ground_truth: '' }]);
   const removeQuery = (i: number) => setQueries(queries.filter((_, idx) => idx !== i));
@@ -27,14 +48,31 @@ export function QueryConfigEditor() {
     if (!name.trim()) return;
     const validQueries = queries.filter(q => q.question.trim() && q.ground_truth.trim());
     if (validQueries.length === 0) return;
-    await createConfig({ name, description, queries: validQueries });
+
+    setSaving(true);
+    try {
+      const payload = { name, description, queries: validQueries, scoring_model: 'gpt-4.1' };
+      if (editConfig) {
+        await queryEvalApi.updateConfig(editConfig.id, payload);
+      } else {
+        await queryEvalApi.createConfig(payload);
+      }
+      await fetchConfigs();
+      onClose();
+    } catch (e) {
+      console.error('Save failed:', e);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-gray-800">New Test Suite</h3>
-        <button onClick={() => setShowConfigEditor(false)} className="text-gray-400 hover:text-gray-600">
+        <h3 className="text-sm font-semibold text-gray-800">
+          {editConfig ? 'Edit Test Suite' : 'New Test Suite'}
+        </h3>
+        <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
           <X size={16} />
         </button>
       </div>
@@ -87,10 +125,10 @@ export function QueryConfigEditor() {
         </button>
         <button
           onClick={handleSave}
-          disabled={!name.trim() || queries.every(q => !q.question.trim())}
+          disabled={!name.trim() || queries.every(q => !q.question.trim()) || saving}
           className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
         >
-          <Save size={12} /> Save
+          <Save size={12} /> {saving ? 'Saving...' : editConfig ? 'Update' : 'Save'}
         </button>
       </div>
     </div>
