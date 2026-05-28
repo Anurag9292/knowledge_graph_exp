@@ -127,7 +127,12 @@ export function EvalDashboard() {
                   }`}
                 >
                   <div className="min-w-0">
-                    <div className="text-sm text-gray-700 truncate">{config.name}</div>
+                    <div className="text-sm text-gray-700 truncate">
+                      {config.name}
+                      {config.name.startsWith('Auto:') && (
+                        <span className="ml-1 px-1 py-0.5 text-[9px] bg-amber-100 text-amber-700 rounded">auto</span>
+                      )}
+                    </div>
                     <div className="text-xs text-gray-400">{config.query_count} queries</div>
                   </div>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100">
@@ -162,7 +167,17 @@ export function EvalDashboard() {
               </div>
               <select
                 value={selectedIngestionRun}
-                onChange={(e) => setSelectedIngestionRun(e.target.value)}
+                onChange={(e) => {
+                  const runId = e.target.value;
+                  setSelectedIngestionRun(runId);
+                  // Auto-select matching test suite if one exists for this run
+                  if (runId) {
+                    const autoConfig = configs.find(c => c.description?.includes(runId));
+                    if (autoConfig) {
+                      selectConfig(autoConfig);
+                    }
+                  }
+                }}
                 className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md mb-2"
               >
                 <option value="">Select a completed ingestion run...</option>
