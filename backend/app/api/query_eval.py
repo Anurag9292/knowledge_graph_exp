@@ -163,6 +163,25 @@ async def get_query_eval_config(
     return _config_to_response(config)
 
 
+@router.put("/configs/{config_id}", response_model=QueryEvalConfigResponse)
+async def update_query_eval_config(
+    config_id: str,
+    body: QueryEvalConfigCreate,
+    db: AsyncSession = Depends(get_db),
+) -> QueryEvalConfigResponse:
+    """Update a query evaluation configuration."""
+    config = await db.get(QueryEvalConfig, config_id)
+    if not config:
+        raise HTTPException(status_code=404, detail=f"Config '{config_id}' not found")
+    config.name = body.name
+    config.description = body.description
+    config.queries_json = [q.model_dump() for q in body.queries]
+    config.scoring_model = body.scoring_model
+    await db.flush()
+    await db.refresh(config)
+    return _config_to_response(config)
+
+
 @router.delete("/configs/{config_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_query_eval_config(
     config_id: str,

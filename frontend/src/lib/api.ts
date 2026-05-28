@@ -73,6 +73,7 @@ export const queryEvalApi = {
   listConfigs: () => request<any[]>('/api/query-eval/configs'),
   getConfig: (id: string) => request<any>(`/api/query-eval/configs/${id}`),
   createConfig: (data: any) => request<any>('/api/query-eval/configs', { method: 'POST', body: JSON.stringify(data) }),
+  updateConfig: (id: string, data: any) => request<any>(`/api/query-eval/configs/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteConfig: (id: string) => request<void>(`/api/query-eval/configs/${id}`, { method: 'DELETE' }),
 
   // Runs
