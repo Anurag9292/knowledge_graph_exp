@@ -130,7 +130,7 @@ class Neo4jService:
                 rel_type = edge.get("type", "RELATED_TO")
                 properties = edge.get("properties", {})
 
-                safe_rel_type = _sanitize_label(rel_type).upper()
+                safe_rel_type = _sanitize_label(rel_type)
 
                 edge_props = {
                     k: v for k, v in properties.items()
