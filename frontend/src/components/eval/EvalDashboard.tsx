@@ -17,15 +17,37 @@ export function EvalDashboard() {
     showRunTrigger, setShowRunTrigger, clearError,
   } = useEvalStore();
 
-  const [experiments, setExperiments] = useState<any[]>([]);
+  const [completedRuns, setCompletedRuns] = useState<{id: string; label: string}[]>([]);
   const [selectedIngestionRun, setSelectedIngestionRun] = useState('');
   const [polling, setPolling] = useState<string | null>(null);
 
   useEffect(() => {
     fetchConfigs();
     fetchRuns();
-    // Load experiments for the run trigger
-    experimentsApi.list().then(setExperiments).catch(console.error);
+    // Load all completed ingestion runs for the run trigger
+    const loadCompletedRuns = async () => {
+      try {
+        const experiments = await experimentsApi.list();
+        const allRuns: {id: string; label: string}[] = [];
+        for (const exp of experiments) {
+          try {
+            const detail = await experimentsApi.get(exp.id);
+            if (detail.runs) {
+              for (const run of detail.runs) {
+                if (run.status === 'completed') {
+                  const date = run.started_at ? new Date(run.started_at).toLocaleString() : run.created_at ? new Date(run.created_at).toLocaleString() : 'unknown';
+                  allRuns.push({ id: run.id, label: `${exp.name} — ${date}` });
+                }
+              }
+            }
+          } catch (e) { /* skip failed fetches */ }
+        }
+        setCompletedRuns(allRuns);
+      } catch (e) {
+        console.error('Failed to load runs:', e);
+      }
+    };
+    loadCompletedRuns();
   }, [fetchConfigs, fetchRuns]);
 
   // Poll for running eval results
@@ -127,28 +149,16 @@ export function EvalDashboard() {
                 onChange={(e) => setSelectedIngestionRun(e.target.value)}
                 className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md mb-2"
               >
-                <option value="">Select ingestion run...</option>
-                {experiments.map((exp) => (
-                  <option key={exp.id} value={exp.id} disabled>
-                    {exp.name} (select a run below)
+                <option value="">Select a completed ingestion run...</option>
+                {completedRuns.map((run) => (
+                  <option key={run.id} value={run.id}>
+                    {run.label}
                   </option>
                 ))}
               </select>
-              {experiments.map((exp) => (
-                exp.runs?.map((run: any) => (
-                  run.status === 'completed' && (
-                    <button
-                      key={run.id}
-                      onClick={() => setSelectedIngestionRun(run.id)}
-                      className={`w-full text-left px-2 py-1 text-xs rounded mb-1 ${
-                        selectedIngestionRun === run.id ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50 border border-transparent'
-                      }`}
-                    >
-                      {exp.name} — Run {run.id.slice(0, 8)}
-                    </button>
-                  )
-                ))
-              ))}
+              {completedRuns.length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-1">No completed runs found</p>
+              )}
               <button
                 onClick={handleStartEval}
                 disabled={!selectedIngestionRun || loading}
