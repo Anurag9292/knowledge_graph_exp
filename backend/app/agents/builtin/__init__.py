@@ -10,6 +10,12 @@ from app.agents.builtin.summarizer import SummarizerAgent
 from app.agents.builtin.domain_config import DomainConfigAgent
 from app.agents.builtin.schema_architect import SchemaArchitectAgent
 from app.agents.builtin.schema_exporter import SchemaExporterAgent
+# Phase 2: Query Eval agents
+from app.agents.builtin.query_planner import QueryPlannerAgent
+from app.agents.builtin.cypher_generator import CypherGeneratorAgent
+from app.agents.builtin.cypher_executor import CypherExecutorAgent
+from app.agents.builtin.answer_synthesizer import AnswerSynthesizerAgent
+from app.agents.builtin.eval_scorer import EvalScorerAgent
 
 __all__ = [
     "StructureInferrerAgent",
@@ -23,4 +29,10 @@ __all__ = [
     "DomainConfigAgent",
     "SchemaArchitectAgent",
     "SchemaExporterAgent",
+    # Phase 2: Query Eval
+    "QueryPlannerAgent",
+    "CypherGeneratorAgent",
+    "CypherExecutorAgent",
+    "AnswerSynthesizerAgent",
+    "EvalScorerAgent",
 ]

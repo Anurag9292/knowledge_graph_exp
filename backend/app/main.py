@@ -9,11 +9,13 @@ from sqlalchemy import select
 from app.config import settings
 from app.models.database import Base, engine, async_session
 from app.models.graph import GraphDefinition
+from app.models.query_eval import QueryEvalConfig, QueryEvalRun  # noqa: F401
 from app.api.graphs import router as graphs_router
 from app.api.experiments import router as experiments_router
 from app.api.agents import router as agents_router
 from app.api.documents import router as documents_router
 from app.api.evals import router as evals_router
+from app.api.query_eval import router as query_eval_router
 from app.api.ws import router as ws_router
 
 # Import built-in agents so they register with AgentRegistry on startup
@@ -200,6 +202,7 @@ app.include_router(experiments_router, prefix="/api")
 app.include_router(agents_router, prefix="/api")
 app.include_router(documents_router, prefix="/api")
 app.include_router(evals_router, prefix="/api")
+app.include_router(query_eval_router, prefix="/api")
 app.include_router(ws_router, prefix="/api")
 
 
