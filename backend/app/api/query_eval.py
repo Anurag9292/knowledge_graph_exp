@@ -432,7 +432,7 @@ async def _evaluate_single_query(
     grand_schema: dict[str, Any],
     run_id: str,
 ) -> dict[str, Any]:
-    """Evaluate a single query through the full multi-agent pipeline."""
+    """Evaluate a single query through the full multi-agent pipeline with trace."""
     result = {
         "question": question,
         "ground_truth": ground_truth,
@@ -442,10 +442,18 @@ async def _evaluate_single_query(
         "answer": "",
         "score": 0.0,
         "reasoning": "",
+        "pipeline_trace": [],
+        "schema_context": {
+            "node_labels": list(grand_schema.get("node_labels", {}).keys()),
+            "relationship_types": list(grand_schema.get("relationship_types", {}).keys()),
+            "entity_count": len(grand_schema.get("entity_catalog", [])),
+            "constraints_count": len(grand_schema.get("constraints", [])),
+        },
     }
 
     try:
         # Step 1: Query Planning
+        step_start = time.time()
         planner = AgentRegistry.create_instance("query_planner", node_id="eval_planner")
         plan_input = AgentInput(
             data={"question": question, "grand_schema": grand_schema},
@@ -453,7 +461,16 @@ async def _evaluate_single_query(
         )
         plan_output = await planner.process(plan_input)
         sub_queries = plan_output.data.get("sub_queries", [])
+        analysis = plan_output.data.get("analysis", "")
         result["sub_queries"] = sub_queries
+        result["pipeline_trace"].append({
+            "agent": "query_planner",
+            "step": 1,
+            "duration_ms": int((time.time() - step_start) * 1000),
+            "input_summary": f"Question: {question[:100]}",
+            "output_summary": f"{len(sub_queries)} sub-queries planned",
+            "full_output": {"analysis": analysis, "sub_queries": sub_queries},
+        })
 
         if not sub_queries:
             result["answer"] = "Could not decompose the query into sub-queries."
@@ -464,6 +481,7 @@ async def _evaluate_single_query(
         all_query_results = []
         for sq in sub_queries:
             # Generate Cypher
+            step_start = time.time()
             generator = AgentRegistry.create_instance("cypher_generator", node_id="eval_cypher_gen")
             gen_input = AgentInput(
                 data={"sub_query": sq, "grand_schema": grand_schema, "question": question},
@@ -472,15 +490,27 @@ async def _evaluate_single_query(
             gen_output = await generator.process(gen_input)
             cypher = gen_output.data.get("cypher", "")
             parameters = gen_output.data.get("parameters", {})
+            explanation = gen_output.data.get("explanation", "")
+            gen_duration = int((time.time() - step_start) * 1000)
 
             result["cypher_statements"].append({
                 "sub_query_id": sq.get("id", ""),
                 "intent": sq.get("intent", ""),
                 "cypher": cypher,
                 "parameters": parameters,
+                "explanation": explanation,
+            })
+            result["pipeline_trace"].append({
+                "agent": "cypher_generator",
+                "step": 2,
+                "duration_ms": gen_duration,
+                "input_summary": f"Intent: {sq.get('intent', '')[:80]}",
+                "output_summary": f"Cypher: {cypher[:80]}..." if cypher else "No Cypher generated",
+                "full_output": {"cypher": cypher, "parameters": parameters, "explanation": explanation},
             })
 
             # Execute Cypher
+            step_start = time.time()
             if cypher:
                 executor = AgentRegistry.create_instance("cypher_executor", node_id="eval_executor")
                 exec_input = AgentInput(
@@ -488,26 +518,40 @@ async def _evaluate_single_query(
                     shared_state={},
                 )
                 exec_output = await executor.process(exec_input)
+                exec_results = exec_output.data.get("results", [])
+                exec_error = exec_output.data.get("error")
                 query_result = {
                     "sub_query_id": sq.get("id", ""),
                     "intent": sq.get("intent", ""),
                     "cypher": cypher,
-                    "results": exec_output.data.get("results", []),
-                    "error": exec_output.data.get("error"),
+                    "results": exec_results,
+                    "error": exec_error,
                 }
             else:
+                exec_results = []
+                exec_error = "No Cypher generated"
                 query_result = {
                     "sub_query_id": sq.get("id", ""),
                     "intent": sq.get("intent", ""),
                     "cypher": "",
                     "results": [],
-                    "error": "No Cypher generated",
+                    "error": exec_error,
                 }
+            exec_duration = int((time.time() - step_start) * 1000)
             all_query_results.append(query_result)
+            result["pipeline_trace"].append({
+                "agent": "cypher_executor",
+                "step": 3,
+                "duration_ms": exec_duration,
+                "input_summary": f"Cypher: {cypher[:60]}..." if cypher else "N/A",
+                "output_summary": f"{len(exec_results)} results returned" if not exec_error else f"Error: {exec_error}",
+                "full_output": {"results": exec_results[:10], "error": exec_error, "total_results": len(exec_results)},
+            })
 
         result["query_results"] = all_query_results
 
         # Step 4: Answer Synthesis
+        step_start = time.time()
         synthesizer = AgentRegistry.create_instance("answer_synthesizer", node_id="eval_synthesizer")
         synth_input = AgentInput(
             data={"question": question, "query_results": all_query_results},
@@ -515,18 +559,40 @@ async def _evaluate_single_query(
         )
         synth_output = await synthesizer.process(synth_input)
         answer = synth_output.data.get("answer", "")
+        confidence = synth_output.data.get("confidence", 0.0)
+        gaps = synth_output.data.get("gaps", [])
         result["answer"] = answer
+        result["pipeline_trace"].append({
+            "agent": "answer_synthesizer",
+            "step": 4,
+            "duration_ms": int((time.time() - step_start) * 1000),
+            "input_summary": f"{len(all_query_results)} sub-query results",
+            "output_summary": f"Answer ({len(answer)} chars), confidence: {confidence:.2f}",
+            "full_output": {"answer": answer, "confidence": confidence, "gaps": gaps},
+        })
 
         # Step 5: Scoring
+        step_start = time.time()
         scorer = AgentRegistry.create_instance("eval_scorer", node_id="eval_scorer")
         score_input = AgentInput(
             data={"question": question, "answer": answer, "ground_truth": ground_truth},
             shared_state={},
         )
         score_output = await scorer.process(score_input)
-        result["score"] = score_output.data.get("overall_score", 0.0)
-        result["reasoning"] = score_output.data.get("reasoning", "")
-        result["criteria_scores"] = score_output.data.get("criteria_scores", {})
+        overall_score = score_output.data.get("overall_score", 0.0)
+        reasoning = score_output.data.get("reasoning", "")
+        criteria_scores = score_output.data.get("criteria_scores", {})
+        result["score"] = overall_score
+        result["reasoning"] = reasoning
+        result["criteria_scores"] = criteria_scores
+        result["pipeline_trace"].append({
+            "agent": "eval_scorer",
+            "step": 5,
+            "duration_ms": int((time.time() - step_start) * 1000),
+            "input_summary": f"Answer vs ground truth ({len(ground_truth)} chars)",
+            "output_summary": f"Score: {overall_score:.2f}",
+            "full_output": {"overall_score": overall_score, "criteria_scores": criteria_scores, "reasoning": reasoning},
+        })
 
     except Exception as e:
         logger.error(f"Error evaluating query '{question[:50]}...': {e}")

@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Database, MessageSquare, CheckCircle, XCircle } from 'lucide-react';
-import { QueryEvalRun, QueryResult } from '@/types';
+import { QueryEvalRun, QueryResult, PipelineStep } from '@/types';
+import { PipelineStepCard } from './PipelineStepCard';
 import { EvalScoreCard } from './EvalScoreCard';
 
 interface EvalResultsViewProps {
@@ -59,6 +60,39 @@ export function EvalResultsView({ run }: EvalResultsViewProps) {
 
           {expandedQuery === i && (
             <div className="px-4 pb-4 border-t border-gray-100 space-y-3">
+              {/* Schema Context */}
+              {result.schema_context && (
+                <div className="mt-3">
+                  <h5 className="text-xs font-semibold text-gray-600 mb-1">Schema Context</h5>
+                  <div className="flex flex-wrap gap-1">
+                    <span className="px-1.5 py-0.5 text-[10px] bg-blue-100 text-blue-700 rounded">
+                      {result.schema_context.node_labels.length} labels
+                    </span>
+                    <span className="px-1.5 py-0.5 text-[10px] bg-purple-100 text-purple-700 rounded">
+                      {result.schema_context.relationship_types.length} rel types
+                    </span>
+                    <span className="px-1.5 py-0.5 text-[10px] bg-green-100 text-green-700 rounded">
+                      {result.schema_context.entity_count} entities
+                    </span>
+                    <span className="px-1.5 py-0.5 text-[10px] bg-gray-100 text-gray-700 rounded">
+                      {result.schema_context.constraints_count} constraints
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Pipeline Trace */}
+              {result.pipeline_trace && result.pipeline_trace.length > 0 && (
+                <div className="mt-3">
+                  <h5 className="text-xs font-semibold text-gray-600 mb-2">Pipeline Trace</h5>
+                  <div className="space-y-1.5">
+                    {result.pipeline_trace.map((step: PipelineStep, j: number) => (
+                      <PipelineStepCard key={j} step={step} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Cypher queries */}
               {result.cypher_statements?.length > 0 && (
                 <div className="mt-3">
