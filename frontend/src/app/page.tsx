@@ -11,6 +11,7 @@ import { Toolbar } from '@/components/graph-editor/Toolbar';
 import { NodeInspector } from '@/components/node-inspector';
 import { DocumentInput } from '@/components/document-input';
 import { ExperimentDashboard } from '@/components/experiment';
+import { EvalDashboard } from '@/components/eval';
 import { KnowledgeGraphViewer } from '@/components/kg-viewer';
 import { KnowledgeGraph } from '@/types';
 
@@ -124,6 +125,15 @@ export default function Home() {
       <div className="h-screen flex flex-col">
         <Toolbar />
         <ExperimentDashboard />
+      </div>
+    );
+  }
+
+  if (activeTab === 'eval') {
+    return (
+      <div className="h-screen flex flex-col">
+        <Toolbar />
+        <EvalDashboard />
       </div>
     );
   }

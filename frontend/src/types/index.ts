@@ -188,3 +188,68 @@ export interface KnowledgeGraph {
     relationship_types: Record<string, number>;
   };
 }
+
+// ─── Query Eval Types ────────────────────────────────────────────────────────
+
+export interface QueryItem {
+  question: string;
+  ground_truth: string;
+  difficulty?: string;
+  tags?: string[];
+}
+
+export interface QueryEvalConfig {
+  id: string;
+  name: string;
+  description?: string;
+  queries_json: QueryItem[];
+  scoring_model: string;
+  created_at: string;
+  query_count: number;
+}
+
+export interface CriteriaScore {
+  score: number;
+  reasoning: string;
+}
+
+export interface QueryResult {
+  question: string;
+  ground_truth: string;
+  sub_queries: any[];
+  cypher_statements: {
+    sub_query_id: string;
+    intent: string;
+    cypher: string;
+    parameters: Record<string, any>;
+  }[];
+  query_results: {
+    sub_query_id: string;
+    intent: string;
+    cypher: string;
+    results: any[];
+    error?: string;
+  }[];
+  answer: string;
+  score: number;
+  reasoning: string;
+  criteria_scores?: Record<string, CriteriaScore>;
+  error?: string;
+}
+
+export interface QueryEvalRun {
+  id: string;
+  config_id: string;
+  ingestion_run_id: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  overall_score?: number;
+  queries_evaluated: number;
+  queries_passed: number;
+  query_results_json?: QueryResult[];
+  neo4j_stats_json?: Record<string, any>;
+  total_duration_ms?: number;
+  started_at?: string;
+  completed_at?: string;
+  error_message?: string;
+  created_at: string;
+}

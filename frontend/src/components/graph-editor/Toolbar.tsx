@@ -158,6 +158,12 @@ export function Toolbar() {
       >
         Experiments
       </button>
+      <button
+        onClick={() => setActiveTab('eval')}
+        className="text-xs text-gray-500 hover:text-gray-700 font-medium transition"
+      >
+        Eval
+      </button>
     </div>
   );
 }
