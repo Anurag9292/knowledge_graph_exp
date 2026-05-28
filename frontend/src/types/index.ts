@@ -269,5 +269,6 @@ export interface SchemaContext {
   node_labels: string[];
   relationship_types: string[];
   entity_count: number;
+  entity_names: string[];
   constraints_count: number;
 }

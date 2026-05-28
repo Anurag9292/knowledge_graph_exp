@@ -60,11 +60,11 @@ export function EvalResultsView({ run }: EvalResultsViewProps) {
 
           {expandedQuery === i && (
             <div className="px-4 pb-4 border-t border-gray-100 space-y-3">
-              {/* Schema Context */}
+              {/* Schema Context (expandable) */}
               {result.schema_context && (
                 <div className="mt-3">
                   <h5 className="text-xs font-semibold text-gray-600 mb-1">Schema Context</h5>
-                  <div className="flex flex-wrap gap-1">
+                  <div className="flex flex-wrap gap-1 mb-2">
                     <span className="px-1.5 py-0.5 text-[10px] bg-blue-100 text-blue-700 rounded">
                       {result.schema_context.node_labels.length} labels
                     </span>
@@ -77,6 +77,28 @@ export function EvalResultsView({ run }: EvalResultsViewProps) {
                     <span className="px-1.5 py-0.5 text-[10px] bg-gray-100 text-gray-700 rounded">
                       {result.schema_context.constraints_count} constraints
                     </span>
+                  </div>
+                  <div className="bg-gray-50 rounded-md p-2 space-y-2 text-xs">
+                    <div>
+                      <span className="font-semibold text-blue-700">Node Labels: </span>
+                      <span className="text-gray-700">
+                        {result.schema_context.node_labels.join(', ')}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="font-semibold text-purple-700">Relationship Types: </span>
+                      <span className="text-gray-700">
+                        {result.schema_context.relationship_types.join(', ')}
+                      </span>
+                    </div>
+                    {result.schema_context.entity_names && (
+                      <div>
+                        <span className="font-semibold text-green-700">Entities: </span>
+                        <span className="text-gray-700">
+                          {result.schema_context.entity_names.join(', ')}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
