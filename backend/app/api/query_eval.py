@@ -447,6 +447,7 @@ async def _evaluate_single_query(
             "node_labels": list(grand_schema.get("node_labels", {}).keys()),
             "relationship_types": list(grand_schema.get("relationship_types", {}).keys()),
             "entity_count": len(grand_schema.get("entity_catalog", [])),
+            "entity_names": [e.get("name", "") for e in grand_schema.get("entity_catalog", [])[:100]],
             "constraints_count": len(grand_schema.get("constraints", [])),
         },
     }
