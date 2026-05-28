@@ -235,6 +235,8 @@ export interface QueryResult {
   reasoning: string;
   criteria_scores?: Record<string, CriteriaScore>;
   error?: string;
+  pipeline_trace?: PipelineStep[];
+  schema_context?: SchemaContext;
 }
 
 export interface QueryEvalRun {
@@ -252,4 +254,20 @@ export interface QueryEvalRun {
   completed_at?: string;
   error_message?: string;
   created_at: string;
+}
+
+export interface PipelineStep {
+  agent: string;
+  step: number;
+  duration_ms: number;
+  input_summary: string;
+  output_summary: string;
+  full_output: any;
+}
+
+export interface SchemaContext {
+  node_labels: string[];
+  relationship_types: string[];
+  entity_count: number;
+  constraints_count: number;
 }
