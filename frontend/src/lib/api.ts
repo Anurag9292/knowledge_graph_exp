@@ -66,3 +66,21 @@ export const evalsApi = {
   runEval: (data: any) => request<any>('/api/evals/run', { method: 'POST', body: JSON.stringify(data) }),
   getResults: (runId: string) => request<any[]>(`/api/evals/results/${runId}`),
 };
+
+// Query Eval (Phase 2)
+export const queryEvalApi = {
+  // Configs (test suites)
+  listConfigs: () => request<any[]>('/api/query-eval/configs'),
+  getConfig: (id: string) => request<any>(`/api/query-eval/configs/${id}`),
+  createConfig: (data: any) => request<any>('/api/query-eval/configs', { method: 'POST', body: JSON.stringify(data) }),
+  deleteConfig: (id: string) => request<void>(`/api/query-eval/configs/${id}`, { method: 'DELETE' }),
+
+  // Runs
+  listRuns: (configId?: string) => {
+    const params = configId ? `?config_id=${configId}` : '';
+    return request<any[]>(`/api/query-eval/runs${params}`);
+  },
+  getRun: (runId: string) => request<any>(`/api/query-eval/runs/${runId}`),
+  createRun: (data: { config_id: string; ingestion_run_id: string }) =>
+    request<any>('/api/query-eval/run', { method: 'POST', body: JSON.stringify(data) }),
+};

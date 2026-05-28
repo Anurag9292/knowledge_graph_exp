@@ -9,7 +9,7 @@ interface AppState {
   // UI state
   selectedNodeId: string | null;
   inspectorOpen: boolean;
-  activeTab: 'editor' | 'experiments' | 'agents';
+  activeTab: 'editor' | 'experiments' | 'eval' | 'agents';
   inputPanelOpen: boolean;
   kgViewerOpen: boolean;
 
@@ -21,7 +21,7 @@ interface AppState {
   setAgentTypes: (types: AgentType[]) => void;
   selectNode: (nodeId: string | null) => void;
   toggleInspector: (open?: boolean) => void;
-  setActiveTab: (tab: 'editor' | 'experiments' | 'agents') => void;
+  setActiveTab: (tab: 'editor' | 'experiments' | 'eval' | 'agents') => void;
   toggleInputPanel: (open?: boolean) => void;
   toggleKgViewer: (open?: boolean) => void;
   setInputText: (text: string) => void;
