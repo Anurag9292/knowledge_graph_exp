@@ -21,6 +21,8 @@ from app.models.execution import NodeExecution
 from app.models.experiment import ExperimentRun, ExperimentSession
 from app.models.graph import GraphDefinition
 from app.parsers.base import ParsedDocument
+from app.models.query_eval import QueryEvalConfig
+from app.services.llm import get_llm_service
 
 logger = logging.getLogger(__name__)
 
@@ -252,6 +254,12 @@ async def _execute_run_background(
                 await db.commit()
         logger.info(f"[Run {run_id}] \u2713 Run completed successfully!")
 
+        # Auto-generate a test suite for this run
+        try:
+            await _auto_generate_test_suite(run_id, document_data)
+        except Exception as gen_exc:
+            logger.warning(f"[Run {run_id}] Auto test suite generation failed (non-fatal): {gen_exc}")
+
     except Exception as exc:
         logger.error(f"[Run {run_id}] \u2717 FAILED: {exc}")
         logger.error(traceback.format_exc())
@@ -268,6 +276,88 @@ async def _execute_run_background(
             logger.error(f"[Run {run_id}] Failed to update DB with error status: {db_exc}")
     finally:
         _active_engines.pop(run_id, None)
+
+
+async def _auto_generate_test_suite(run_id: str, document_data: dict[str, Any]) -> None:
+    """Auto-generate a test suite (3 easy, 4 medium, 3 hard questions) from the input text."""
+    raw_text = document_data.get("raw_text", "")
+    if not raw_text or len(raw_text) < 100:
+        logger.info(f"[Run {run_id}] Skipping auto test suite — input text too short")
+        return
+
+    logger.info(f"[Run {run_id}] Generating auto test suite from input text ({len(raw_text)} chars)...")
+
+    # Use LLM to generate questions
+    llm = get_llm_service()
+    messages = [
+        {
+            "role": "system",
+            "content": """You are a knowledge graph evaluation expert. Given a document text, generate exactly 10 questions that can be answered by querying a knowledge graph built from this text.
+
+Generate:
+- 3 EASY questions (single-hop, direct facts: "What is X?", "Where is Y located?", "Who created Z?")
+- 4 MEDIUM questions (multi-hop, connecting 2 entities: "What is the relationship between X and Y?", "Which entities are connected to X via relationship R?")
+- 3 HARD questions (complex, requiring 3+ entities or reasoning: "What path connects X to Y?", "Which entities share property P?")
+
+You MUST output valid JSON:
+{
+  "questions": [
+    {"question": "...", "ground_truth": "...", "difficulty": "easy"},
+    {"question": "...", "ground_truth": "...", "difficulty": "easy"},
+    {"question": "...", "ground_truth": "...", "difficulty": "easy"},
+    {"question": "...", "ground_truth": "...", "difficulty": "medium"},
+    {"question": "...", "ground_truth": "...", "difficulty": "medium"},
+    {"question": "...", "ground_truth": "...", "difficulty": "medium"},
+    {"question": "...", "ground_truth": "...", "difficulty": "medium"},
+    {"question": "...", "ground_truth": "...", "difficulty": "hard"},
+    {"question": "...", "ground_truth": "...", "difficulty": "hard"},
+    {"question": "...", "ground_truth": "...", "difficulty": "hard"}
+  ]
+}
+
+Guidelines:
+- Questions should be answerable from the text content
+- Ground truth should be concise, factual answers
+- Easy questions test single facts
+- Medium questions require connecting 2 pieces of information
+- Hard questions require synthesis across multiple facts
+- Use specific entity names from the text"""
+        },
+        {
+            "role": "user",
+            "content": f"Generate 10 evaluation questions for this document:\n\n{raw_text[:6000]}"
+        },
+    ]
+
+    try:
+        result = await llm.structured_output(
+            messages=messages,
+            model="gpt-4.1-mini",
+            temperature=0.3,
+            max_tokens=4096,
+        )
+
+        questions = result.get("questions", [])
+        if not questions:
+            logger.warning(f"[Run {run_id}] LLM returned no questions")
+            return
+
+        # Create the eval config
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+        async with async_session() as db:
+            config = QueryEvalConfig(
+                name=f"Auto: Run {run_id[:8]} — {timestamp}",
+                description=f"Auto-generated test suite for run {run_id} ({len(questions)} questions: 3 easy, 4 medium, 3 hard)",
+                queries_json=questions,
+                scoring_model="gpt-4.1",
+            )
+            db.add(config)
+            await db.commit()
+
+        logger.info(f"[Run {run_id}] \u2713 Auto test suite created: {len(questions)} questions")
+
+    except Exception as e:
+        logger.error(f"[Run {run_id}] Failed to generate test suite: {e}")
 
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────
