@@ -417,6 +417,9 @@ async def _load_kg_to_neo4j(ingestion_run_id: str, grand_schema: dict[str, Any])
             if graph_data.get("edges"):
                 edges = graph_data["edges"]
 
+    # Clear ALL existing data in Neo4j before loading (ensures clean evaluation state)
+    await Neo4jService.clear_graph()
+
     # Load into Neo4j
     stats = await Neo4jService.load_kg(
         nodes=nodes,
