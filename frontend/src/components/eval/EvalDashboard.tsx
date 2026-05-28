@@ -102,12 +102,33 @@ export function EvalDashboard() {
           <div className="bg-white border border-gray-200 rounded-lg p-3">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Test Suites</h3>
-              <button
-                onClick={() => { setEditingConfig(null); setShowConfigEditor(true); }}
-                className="text-blue-600 hover:text-blue-800"
-              >
-                <Plus size={14} />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={async () => {
+                    if (!selectedIngestionRun) {
+                      alert('Select an ingestion run first (in RUN EVAL section below)');
+                      return;
+                    }
+                    try {
+                      const { queryEvalApi } = await import('@/lib/api');
+                      await queryEvalApi.autoGenerateConfig(selectedIngestionRun);
+                      await fetchConfigs();
+                    } catch (e: any) {
+                      alert('Auto-generate failed: ' + e.message);
+                    }
+                  }}
+                  className="text-xs text-amber-600 hover:text-amber-800 font-medium"
+                  title="Auto-generate test suite from selected run"
+                >
+                  ⚡Auto
+                </button>
+                <button
+                  onClick={() => { setEditingConfig(null); setShowConfigEditor(true); }}
+                  className="text-blue-600 hover:text-blue-800"
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
             </div>
 
             {showConfigEditor && (
