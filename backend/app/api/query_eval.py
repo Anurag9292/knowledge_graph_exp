@@ -16,7 +16,7 @@ from sqlalchemy.orm import selectinload
 from app.models.database import async_session, get_db
 from app.models.query_eval import QueryEvalConfig, QueryEvalRun
 from app.models.execution import NodeExecution
-from app.models.experiment import ExperimentRun
+from app.models.experiment import ExperimentRun, ExperimentSession
 from app.services.neo4j import Neo4jService
 from app.agents.registry import AgentRegistry
 from app.agents.base import AgentInput
@@ -177,6 +177,88 @@ async def update_query_eval_config(
     config.description = body.description
     config.queries_json = [q.model_dump() for q in body.queries]
     config.scoring_model = body.scoring_model
+    await db.flush()
+    await db.refresh(config)
+    return _config_to_response(config)
+
+
+@router.post("/configs/auto-generate", response_model=QueryEvalConfigResponse, status_code=status.HTTP_201_CREATED)
+async def auto_generate_config(
+    body: dict[str, Any],
+    db: AsyncSession = Depends(get_db),
+) -> QueryEvalConfigResponse:
+    """Auto-generate a test suite from an ingestion run's input text."""
+    from app.services.llm import get_llm_service
+
+    ingestion_run_id = body.get("ingestion_run_id")
+    if not ingestion_run_id:
+        raise HTTPException(status_code=400, detail="ingestion_run_id is required")
+
+    # Get the experiment session to access input text
+    run = await db.get(ExperimentRun, ingestion_run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Run '{ingestion_run_id}' not found")
+
+    session = await db.get(ExperimentSession, run.session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Experiment session not found")
+
+    input_text = session.input_text or ""
+    if len(input_text) < 100:
+        raise HTTPException(status_code=400, detail="Input text too short to generate questions")
+
+    # Generate questions using LLM
+    llm = get_llm_service()
+    messages = [
+        {
+            "role": "system",
+            "content": """You are a knowledge graph evaluation expert. Given a document text, generate exactly 10 questions with ground truth answers that can be answered by querying a knowledge graph built from this text.
+
+Generate:
+- 3 EASY questions (single-hop, direct facts: "What is X?", "Where is Y located?", "Who created Z?")
+- 4 MEDIUM questions (multi-hop, connecting 2 entities: "What is the relationship between X and Y?")
+- 3 HARD questions (complex, requiring 3+ entities or reasoning)
+
+You MUST output valid JSON:
+{
+  "questions": [
+    {"question": "...", "ground_truth": "...", "difficulty": "easy"},
+    {"question": "...", "ground_truth": "...", "difficulty": "medium"},
+    {"question": "...", "ground_truth": "...", "difficulty": "hard"}
+  ]
+}
+
+Guidelines:
+- Questions should be answerable from the text content
+- Ground truth should be concise, factual answers
+- Use specific entity names from the text"""
+        },
+        {
+            "role": "user",
+            "content": f"Generate 10 evaluation questions for this document:\n\n{input_text[:6000]}"
+        },
+    ]
+
+    result = await llm.structured_output(
+        messages=messages,
+        model="gpt-4.1-mini",
+        temperature=0.3,
+        max_tokens=4096,
+    )
+
+    questions = result.get("questions", [])
+    if not questions:
+        raise HTTPException(status_code=500, detail="LLM failed to generate questions")
+
+    # Create the config
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+    config = QueryEvalConfig(
+        name=f"Auto: {session.name} — {timestamp}",
+        description=f"Auto-generated test suite for run {ingestion_run_id} ({len(questions)} questions: 3 easy, 4 medium, 3 hard)",
+        queries_json=questions,
+        scoring_model="gpt-4.1",
+    )
+    db.add(config)
     await db.flush()
     await db.refresh(config)
     return _config_to_response(config)

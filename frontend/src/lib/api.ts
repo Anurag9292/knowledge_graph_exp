@@ -73,6 +73,7 @@ export const queryEvalApi = {
   listConfigs: () => request<any[]>('/api/query-eval/configs'),
   getConfig: (id: string) => request<any>(`/api/query-eval/configs/${id}`),
   createConfig: (data: any) => request<any>('/api/query-eval/configs', { method: 'POST', body: JSON.stringify(data) }),
+  autoGenerateConfig: (ingestionRunId: string) => request<any>('/api/query-eval/configs/auto-generate', { method: 'POST', body: JSON.stringify({ ingestion_run_id: ingestionRunId }) }),
   updateConfig: (id: string, data: any) => request<any>(`/api/query-eval/configs/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteConfig: (id: string) => request<void>(`/api/query-eval/configs/${id}`, { method: 'DELETE' }),
 
