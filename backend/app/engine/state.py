@@ -87,6 +87,13 @@ class GraphState(TypedDict, total=False):
     # Execution metadata
     execution_log: Annotated[list[dict[str, Any]], extend_list]
 
+    # ─── Chunking state (streaming ingestion) ────────────────────────────────
+    # Chunk metadata from structural chunker (for UI visualization)
+    chunks_metadata: Annotated[list[dict[str, Any]], extend_list]
+    
+    # Per-chunk processing results (for chunk timeline visualization)
+    chunk_processing_results: Annotated[list[dict[str, Any]], extend_list]
+
 
 def create_initial_state(
     document_data: dict[str, Any],
@@ -109,4 +116,6 @@ def create_initial_state(
         visual_results=[],
         experiment_memory=experiment_memory or {},
         execution_log=[],
+        chunks_metadata=[],
+        chunk_processing_results=[],
     )

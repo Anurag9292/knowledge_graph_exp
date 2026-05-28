@@ -8,6 +8,8 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, status
 from pydantic import BaseModel
 
 from app.parsers.base import ParsedDocument
+from app.parsers.chunker import StructuralChunker, ChunkResult
+from app.config import get_settings
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -271,3 +273,93 @@ async def parse_text(body: ParseTextRequest) -> ParsedDocumentResponse:
 async def list_supported_formats() -> list[SupportedFormatResponse]:
     """List supported document formats."""
     return [SupportedFormatResponse(**f) for f in SUPPORTED_FORMATS]
+
+
+# ─── Chunking Preview Endpoint ────────────────────────────────────────────────
+
+
+class ChunkPreviewRequest(BaseModel):
+    text: str
+
+
+class ChunkMetadata(BaseModel):
+    has_table: bool = False
+    has_code: bool = False
+    has_list: bool = False
+    has_heading: bool = False
+    block_count: int = 0
+    block_types: list[str] = []
+    headings: list[str] = []
+
+
+class ChunkPreviewItem(BaseModel):
+    text: str
+    index: int
+    chunk_type: str
+    section_path: list[str]
+    char_offset_start: int
+    char_offset_end: int
+    char_count: int
+    metadata: dict[str, Any]
+    complexity_score: float
+    model_selected: str
+
+
+class ChunkPreviewResponse(BaseModel):
+    chunks: list[ChunkPreviewItem]
+    total_chunks: int
+    total_chars: int
+    streaming_threshold: int
+    will_use_streaming: bool
+    config: dict[str, Any]
+
+
+@router.post("/chunk-preview", response_model=ChunkPreviewResponse)
+async def preview_chunks(body: ChunkPreviewRequest) -> ChunkPreviewResponse:
+    """Preview how a document will be chunked by the structural chunker.
+
+    This endpoint does NOT process the text through LLMs — it only shows
+    the chunk boundaries, types, section paths, and complexity scores.
+    Use this to visualize chunking before running ingestion.
+    """
+    if not body.text.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Text input is empty",
+        )
+
+    cfg = get_settings().ingestion
+    chunker = StructuralChunker()
+    chunks = chunker.chunk(body.text)
+
+    chunk_items = []
+    for chunk in chunks:
+        model = chunker.get_model_for_chunk(chunk)
+        chunk_items.append(ChunkPreviewItem(
+            text=chunk.text,
+            index=chunk.index,
+            chunk_type=chunk.chunk_type,
+            section_path=chunk.section_path,
+            char_offset_start=chunk.char_offset_start,
+            char_offset_end=chunk.char_offset_end,
+            char_count=chunk.char_count,
+            metadata=chunk.metadata,
+            complexity_score=chunk.complexity_score,
+            model_selected=model,
+        ))
+
+    return ChunkPreviewResponse(
+        chunks=chunk_items,
+        total_chunks=len(chunks),
+        total_chars=len(body.text),
+        streaming_threshold=cfg.STREAMING_THRESHOLD_CHARS,
+        will_use_streaming=len(body.text) > cfg.STREAMING_THRESHOLD_CHARS,
+        config={
+            "chunk_target_size": cfg.CHUNK_TARGET_SIZE,
+            "chunk_max_size": cfg.CHUNK_MAX_SIZE,
+            "chunk_min_size": cfg.CHUNK_MIN_SIZE,
+            "complexity_threshold_escalate": cfg.COMPLEXITY_THRESHOLD_ESCALATE,
+            "model_default": cfg.MODEL_TIER_DEFAULT,
+            "model_complex": cfg.MODEL_TIER_COMPLEX,
+        },
+    )

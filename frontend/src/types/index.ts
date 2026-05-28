@@ -272,3 +272,60 @@ export interface SchemaContext {
   entity_names: string[];
   constraints_count: number;
 }
+
+// ─── Chunking / Streaming Ingestion Types ────────────────────────────────────
+
+export interface ChunkMetadata {
+  has_table: boolean;
+  has_code: boolean;
+  has_list: boolean;
+  has_heading: boolean;
+  block_count: number;
+  block_types: string[];
+  headings: string[];
+}
+
+export interface ChunkPreviewItem {
+  text: string;
+  index: number;
+  chunk_type: 'section' | 'table' | 'code_block' | 'list_block' | 'paragraph_group';
+  section_path: string[];
+  char_offset_start: number;
+  char_offset_end: number;
+  char_count: number;
+  metadata: ChunkMetadata;
+  complexity_score: number;
+  model_selected: string;
+}
+
+export interface ChunkPreviewResponse {
+  chunks: ChunkPreviewItem[];
+  total_chunks: number;
+  total_chars: number;
+  streaming_threshold: number;
+  will_use_streaming: boolean;
+  config: {
+    chunk_target_size: number;
+    chunk_max_size: number;
+    chunk_min_size: number;
+    complexity_threshold_escalate: number;
+    model_default: string;
+    model_complex: string;
+  };
+}
+
+export interface ChunkProcessingResult {
+  chunk_index: number;
+  chunk_type: string;
+  section_path: string[];
+  complexity_score: number;
+  model_used: string;
+  entities_found: number;
+  relationships_found: number;
+  schema_types_added: number;
+  char_offset_start: number;
+  char_offset_end: number;
+  error?: string;
+}
+
+export type ChunkStatus = 'pending' | 'processing' | 'completed' | 'error';

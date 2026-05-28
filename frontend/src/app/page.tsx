@@ -10,6 +10,7 @@ import { GraphCanvas } from '@/components/graph-editor/GraphCanvas';
 import { Toolbar } from '@/components/graph-editor/Toolbar';
 import { NodeInspector } from '@/components/node-inspector';
 import { DocumentInput } from '@/components/document-input';
+import { ChunkViewer } from '@/components/chunk-viewer/ChunkViewer';
 import { ExperimentDashboard } from '@/components/experiment';
 import { EvalDashboard } from '@/components/eval';
 import { KnowledgeGraphViewer } from '@/components/kg-viewer';
@@ -167,7 +168,20 @@ export default function Home() {
             </div>
           ) : (
             <>
-              <GraphCanvas />
+              <div className="flex-1 flex">
+                <div className="flex-1">
+                  <GraphCanvas />
+                </div>
+                {/* Chunk Viewer Panel — separate panel alongside graph */}
+                <div className="w-80 border-l border-gray-200 bg-white flex flex-col">
+                  <div className="h-8 flex items-center px-3 border-b border-gray-200 bg-gray-50">
+                    <span className="text-xs font-medium text-gray-600">Chunk Inspector</span>
+                  </div>
+                  <div className="flex-1 overflow-hidden">
+                    <ChunkViewer />
+                  </div>
+                </div>
+              </div>
               <DocumentInput />
             </>
           )}
