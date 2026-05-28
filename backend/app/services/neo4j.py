@@ -22,6 +22,7 @@ class Neo4jService:
     """
 
     _driver: AsyncDriver | None = None
+    _database: str = "graphingest_eval"
 
     @classmethod
     async def get_driver(cls) -> AsyncDriver:
@@ -31,6 +32,7 @@ class Neo4jService:
                 settings.NEO4J_URI,
                 auth=(settings.NEO4J_USER, settings.NEO4J_PASSWORD),
             )
+            cls._database = settings.NEO4J_DATABASE
         return cls._driver
 
     @classmethod
@@ -60,7 +62,7 @@ class Neo4jService:
         Otherwise clears everything.
         """
         driver = await cls.get_driver()
-        async with driver.session() as session:
+        async with driver.session(database=cls._database) as session:
             if run_id:
                 await session.run(
                     "MATCH (n {_run_id: $run_id}) DETACH DELETE n",
@@ -92,7 +94,7 @@ class Neo4jService:
         nodes_created = 0
         edges_created = 0
 
-        async with driver.session() as session:
+        async with driver.session(database=cls._database) as session:
             # Clear existing data for this run
             await session.run(
                 "MATCH (n {_run_id: $run_id}) DETACH DELETE n",
@@ -179,7 +181,7 @@ class Neo4jService:
             params["_run_id"] = run_id
 
         results = []
-        async with driver.session() as session:
+        async with driver.session(database=cls._database) as session:
             try:
                 result = await session.run(query, params)
                 records = await result.data()
@@ -194,7 +196,7 @@ class Neo4jService:
     async def get_graph_stats(cls, run_id: str | None = None) -> dict[str, Any]:
         """Get statistics about the loaded graph."""
         driver = await cls.get_driver()
-        async with driver.session() as session:
+        async with driver.session(database=cls._database) as session:
             run_filter = " {_run_id: $run_id}" if run_id else ""
             params = {"run_id": run_id} if run_id else {}
 
