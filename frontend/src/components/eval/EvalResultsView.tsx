@@ -91,14 +91,18 @@ export function EvalResultsView({ run }: EvalResultsViewProps) {
                         {result.schema_context.relationship_types.join(', ')}
                       </span>
                     </div>
-                    {result.schema_context.entity_names && (
-                      <div>
-                        <span className="font-semibold text-green-700">Entities: </span>
+                    <div>
+                      <span className="font-semibold text-green-700">Entities ({result.schema_context.entity_count}): </span>
+                      {result.schema_context.entity_names && result.schema_context.entity_names.length > 0 ? (
                         <span className="text-gray-700">
                           {result.schema_context.entity_names.join(', ')}
                         </span>
-                      </div>
-                    )}
+                      ) : (
+                        <span className="text-gray-400 italic">
+                          Re-run eval to see entity names (run was created before this feature)
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
